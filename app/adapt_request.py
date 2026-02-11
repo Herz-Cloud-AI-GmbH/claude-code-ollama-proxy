@@ -59,7 +59,7 @@ def to_anthropic_compat(request: MessagesRequest, *, resolved_model: str) -> dic
         payload.pop(key, None)
 
     payload["model"] = resolved_model
-    payload["stream"] = False
+    payload.setdefault("stream", False)
 
     messages = []
     for message in payload.get("messages", []):

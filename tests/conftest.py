@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Callable
 
 import pytest
 from fastapi.testclient import TestClient
 
-from cc_proxy.app.main import app
-from cc_proxy.app.transport import OllamaClient
+from app.main import app
+from app.transport import OllamaClient
 
 from .utils import ensure_proxy_stopped
 
@@ -110,4 +112,44 @@ def minimal_messages_request() -> dict[str, Any]:
         "messages": [{"role": "user", "content": "hi"}],
         "max_tokens": 16,
     }
+
+
+def load_jsonl_fixture(name: str, *, min_entries: int = 1) -> list[dict[str, Any]]:
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / name
+    entries: list[dict[str, Any]] = []
+    for line in fixture_path.read_text().splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        value = json.loads(raw)
+        if isinstance(value, dict):
+            entries.append(value)
+    if len(entries) < min_entries:
+        raise AssertionError(
+            f"Fixture {name} has {len(entries)} entries, expected at least {min_entries}"
+        )
+    return entries
+
+
+def has_tool_use(payload: dict[str, Any]) -> bool:
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            return True
+    return False
+
+
+def has_tool_call_text(payload: dict[str, Any]) -> bool:
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "text":
+            continue
+        text = str(block.get("text") or "").lower()
+        if "<tool_call>" in text or "tool_call" in text:
+            return True
+    return False
 

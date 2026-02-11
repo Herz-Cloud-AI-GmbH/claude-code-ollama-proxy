@@ -9,7 +9,7 @@ def test_dev_otelcol_config_has_expected_receivers_and_ports() -> None:
     contains the expected OTLP + health_check endpoints and a traces pipeline.
     """
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[1]
     cfg = (repo_root / "apps" / "otelcol-config.yaml").read_text()
 
     assert "receivers:" in cfg

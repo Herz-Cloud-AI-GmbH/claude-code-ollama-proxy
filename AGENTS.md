@@ -26,7 +26,7 @@ This document provides everything you need to work effectively in the `cc_proxy`
 ## 2. Repository Structure
 
 ```
-cc_proxy/
+repo/
 ├── AGENTS.md              # This file — AI agent onboarding
 ├── cc-proxy.yaml          # Routing config: aliases, thinking-capable models, promises
 ├── sample.env             # Template for user environment variables
@@ -133,7 +133,7 @@ Middleware (log end, add X-Request-ID header)
 | `observability.py` | JSON logging, OTel trace setup, `LogEvent` constants, `emit_span_event()` helper |
 | `middleware_request_logging.py` | Request/response lifecycle logging |
 | `request_context.py` | `request_id` contextvar for correlation |
-| `apps_env.py` | Load environment from `cc_proxy/.env` |
+| `apps_env.py` | Load environment from `.env` |
 
 ---
 
@@ -146,13 +146,12 @@ Middleware (log end, add X-Request-ID header)
 
 ### Configuration Sources (in order of precedence)
 1. Environment variables
-2. `~/.cc-proxy/cc-proxy.user.yaml` (user config)
-3. `.cc-proxy/cc-proxy.user.yaml` (repo config)
-4. `cc_proxy/cc-proxy.yaml` (base config)
+2. `~/.config/cc-proxy/cc-proxy.user.yaml` (user config, configurable via `cc-proxy.yaml`)
+3. `cc-proxy.yaml` (base config)
 
 ### Key Configuration Files
 
-**`cc_proxy/cc-proxy.yaml`**:
+**`cc-proxy.yaml`**:
 ```yaml
 schema_version: 1
 default_alias: sonnet
@@ -175,7 +174,7 @@ aliases:
       tool_calling: planned
 ```
 
-**Note**: Model mappings for aliases are defined in user config (`~/.cc-proxy/cc-proxy.user.yaml` or `.cc-proxy/cc-proxy.user.yaml`), not in the base config. The base config only defines the promise/capability declarations.
+**Note**: Model mappings for aliases are defined in user config (default `~/.config/cc-proxy/cc-proxy.user.yaml`, configurable via `user_config_path` in `cc-proxy.yaml`), not in the base config. The base config only defines the promise/capability declarations.
 
 **Environment Variables**:
 - `CC_PROXY_AUTH_KEY` — Required auth key
@@ -208,8 +207,8 @@ aliases:
 **1. FastAPI TestClient with monkeypatching**:
 ```python
 from fastapi.testclient import TestClient
-from cc_proxy.app.main import app
-from cc_proxy.app.transport import OllamaClient
+from app.main import app
+from app.transport import OllamaClient
 
 def test_example(monkeypatch) -> None:
     monkeypatch.setenv("CC_PROXY_AUTH_KEY", "test-key")
@@ -234,7 +233,7 @@ def test_logs_auth_event(caplog):
 
 **3. Subprocess Integration Tests** (in `test_repo_*.py`):
 ```python
-from cc_proxy.tests.utils import run_manage, wait_for_health_ok
+from tests.utils import run_manage, wait_for_health_ok
 
 def test_proxy_lifecycle():
     result = run_manage(["proxy-start"], timeout_s=10)
@@ -253,16 +252,16 @@ def test_proxy_lifecycle():
 
 ```bash
 # All tests
-pytest cc_proxy/tests/
+pytest tests/
 
 # Specific test file
-pytest cc_proxy/tests/test_api_auth.py
+pytest tests/test_api_auth.py
 
 # With verbose output
-pytest -v cc_proxy/tests/test_api_auth.py
+pytest -v tests/test_api_auth.py
 
 # Repo workflow tests (slower, starts real processes)
-pytest cc_proxy/tests/test_repo_*.py
+pytest tests/test_repo_*.py
 ```
 
 ---
@@ -302,7 +301,7 @@ Each line is a JSON object with stable fields:
 | `thinking.block_handled` | Thinking policy applied (blocks dropped/kept) |
 
 ### Debug Logging
-Enable via `~/.cc-proxy/cc-proxy.user.yaml`:
+Enable via `~/.config/cc-proxy/cc-proxy.user.yaml`:
 ```yaml
 debug_logging:
   request_headers: true
@@ -389,8 +388,8 @@ When adding fields to Anthropic models:
 4. Add test in appropriate `test_models_*.py` or `test_adapt_*.py`
 
 ### Configuration Changes
-- Base defaults: `cc_proxy/cc-proxy.yaml`
-- User overrides: `~/.cc-proxy/cc-proxy.user.yaml` (preferred) or `.cc-proxy/cc-proxy.user.yaml`
+- Base defaults: `cc-proxy.yaml`
+- User overrides: path from `user_config_path` in `cc-proxy.yaml` (default `~/.config/cc-proxy/cc-proxy.user.yaml`)
 - Never commit user configs
 
 ---
@@ -400,17 +399,17 @@ When adding fields to Anthropic models:
 ### Start Development
 ```bash
 # 1. Setup environment
-cp cc_proxy/sample.env cc_proxy/.env
+cp sample.env .env
 # Edit .env to set CC_PROXY_AUTH_KEY
 
 # 2. Install dependencies
 pip install -r requirements.txt  # if exists, or use pyproject.toml
 
 # 3. Run tests
-pytest cc_proxy/tests/ -v
+pytest tests/ -v
 
 # 4. Start proxy manually for manual testing
-python -m uvicorn cc_proxy.app.main:app --port 3456 --reload
+python -m uvicorn app.main:app --port 3456 --reload
 ```
 
 ### Common Commands
@@ -421,18 +420,18 @@ make proxy-stop       # Stop cc-proxy
 make status           # Check profile and service status
 
 # Direct pytest
-pytest cc_proxy/tests/test_api_auth.py -v
-pytest cc_proxy/tests/test_adapt_request.py -v
+pytest tests/test_api_auth.py -v
+pytest tests/test_adapt_request.py -v
 
 # Streaming tests
-pytest -m streaming cc_proxy/tests/ -v
+pytest -m streaming tests/ -v
 
 # With coverage
-pytest cc_proxy/tests/ --cov=cc_proxy --cov-report=html
+pytest tests/ --cov=app --cov-report=html
 ```
 
 ### Debugging Tips
-1. **Enable debug logging** in `~/.cc-proxy/cc-proxy.user.yaml`
+1. **Enable debug logging** in `~/.config/cc-proxy/cc-proxy.user.yaml`
 2. **Check logs for trace_id** to correlate across services
 3. **Use X-Request-ID header** to grep for specific requests
 4. **Test auth separately**: `curl -H "Authorization: Bearer $KEY" http://localhost:3456/health`

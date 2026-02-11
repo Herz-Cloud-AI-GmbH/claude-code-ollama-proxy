@@ -53,7 +53,7 @@ The proxy **enforces** a thinking policy based on model capability:
    - Warning header added: `X-CC-Proxy-Warning: thinking_dropped`
    - Structured log event emitted: `event: "thinking.block_handled"` with counts
 
-**Implementation**: `apply_thinking_policy()` in `cc_proxy/app/adapt_request.py`
+**Implementation**: `apply_thinking_policy()` in `app/adapt_request.py`
 
 Implication: To preserve thinking traces in Claude Code, the model must be listed
 in `thinking_capable_models` in `cc-proxy.yaml`. The proxy will then return valid
@@ -77,7 +77,7 @@ The log event is visible in server logs (stdout JSON logs) and can be correlated
 
 ## Static allowlist + dynamic detection
 We should combine:
-1) Static allowlist for known thinking-capable models in `cc_proxy/cc-proxy.yaml`.
+1) Static allowlist for known thinking-capable models in `cc-proxy.yaml`.
 2) Dynamic capability detection for all other models:
    - Send a tiny `/v1/messages` request with `thinking: { type: "enabled", budget_tokens: ... }`.
    - If response contains a thinking trace, treat model as thinking-capable.

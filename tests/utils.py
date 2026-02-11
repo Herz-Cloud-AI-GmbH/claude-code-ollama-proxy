@@ -20,7 +20,7 @@ class RepoContext:
 
 
 def get_repo_context() -> RepoContext:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[1]
     return RepoContext(
         root=root,
         manage=[sys.executable, str(root / "scripts" / "manage.py")],
@@ -125,4 +125,21 @@ def wait_for_health_ok(*, port: int = 3456, timeout_s: float = 6.0) -> None:
             last_err = e
         time.sleep(0.2)
     raise AssertionError(f"cc-proxy /health never became ready: {last_err}")
+
+
+def assert_ollama_reachable(
+    *,
+    base_url: str = "http://host.docker.internal:11434",
+    timeout_s: float = 2.0,
+) -> None:
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=timeout_s)
+    except Exception as exc:  # noqa: BLE001 - assertion helper
+        raise AssertionError(
+            f"Ollama is not reachable at {base_url}. Ensure Ollama is running."
+        ) from exc
+    if response.status_code >= 400:
+        raise AssertionError(
+            f"Ollama check failed at {base_url}/api/tags with status {response.status_code}."
+        )
 

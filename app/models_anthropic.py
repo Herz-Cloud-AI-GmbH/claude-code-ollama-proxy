@@ -9,14 +9,14 @@ class Message(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     role: Literal["user", "assistant"] | str
-    # Claude Code can send rich content blocks; for Phase 2 we accept anything.
+    # Claude Code can send rich content blocks; keep this permissive for compatibility.
     content: Any
 
 
 class MessagesRequest(BaseModel):
     """
     Minimal subset of Anthropic Messages API request that Claude Code sends.
-    Keep permissive for Phase 2; we only need `model` and `messages`.
+    Keep permissive; we only require `model` and `messages`.
     """
 
     model_config = ConfigDict(extra="allow")

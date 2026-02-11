@@ -6,9 +6,9 @@ import yaml
 
 
 def test_proxy_config_files_exist_and_parse() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    proxy_config = repo_root / "cc-proxy" / "cc-proxy.yaml"
-    user_config = repo_root / ".cc-proxy" / "cc-proxy.user.yaml"
+    repo_root = Path(__file__).resolve().parents[1]
+    proxy_config = repo_root / "cc-proxy.yaml"
+    user_config = repo_root / "example" / "cc-proxy.user.yaml"
 
     assert proxy_config.exists()
     assert user_config.exists()

@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.ollama_client.close()
 
 
-app = FastAPI(title="cc-proxy", version="0.0.0-phase0", lifespan=lifespan)
+app = FastAPI(title="cc-proxy", version="0.1.0", lifespan=lifespan)
 install_request_logging_middleware(app)
 
 try:

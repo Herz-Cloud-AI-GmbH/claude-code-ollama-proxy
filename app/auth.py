@@ -4,6 +4,7 @@ import logging
 import os
 
 from fastapi import Header, HTTPException, Request
+from opentelemetry import trace
 
 from .observability import emit_span_event, LogEvent
 

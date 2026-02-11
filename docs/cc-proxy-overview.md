@@ -189,11 +189,12 @@ flowchart LR
 
 ## Configuration Reference
 
-### Server Config (`cc_proxy/cc-proxy.yaml`)
+### Server Config (`cc-proxy.yaml`)
 
 ```yaml
 schema_version: 1
 default_alias: sonnet
+user_config_path: "~/.config/cc-proxy/cc-proxy.user.yaml"
 
 # Models that support thinking blocks
 thinking_capable_models:
@@ -209,7 +210,9 @@ tool_calling_capable_models:
 verbose_tool_logging: false
 ```
 
-### User Config (`~/.cc-proxy/cc-proxy.user.yaml`)
+### User Config (`~/.config/cc-proxy/cc-proxy.user.yaml`)
+
+The location is configurable via `user_config_path` in `cc-proxy.yaml`.
 
 ```yaml
 aliases:
@@ -298,9 +301,9 @@ X-CC-Proxy-Warning: tool_use_dropped
 
 **Mitigation:** Use tool-capable models (qwen3:14b, qwen3:8b tested), test your specific workflows.
 
-### 2. No Streaming Support (Yet)
+### 2. Streaming Limitations
 
-Currently only supports non-streaming responses. Streaming support is planned (Phase 6).
+Streaming is supported, but tool-call streaming is gated and model-dependent.
 
 ### 3. Repair is Best-Effort
 
@@ -335,7 +338,7 @@ cc-proxy includes 50+ tests covering:
 
 Run tests:
 ```bash
-pytest cc_proxy/tests/ -v
+pytest tests/ -v
 ```
 
 ---
@@ -389,7 +392,7 @@ All changes must:
 
 1. Enable verbose logging:
    ```yaml
-   # ~/.cc-proxy/cc-proxy.user.yaml
+   # ~/.config/cc-proxy/cc-proxy.user.yaml
    verbose_tool_logging: true
    debug_logging:
      request_body: true

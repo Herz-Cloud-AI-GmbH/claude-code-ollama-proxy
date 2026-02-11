@@ -1,12 +1,12 @@
 # cc-proxy Testing Strategy
 
-This document describes the testing approach, patterns, and organization for the `cc_proxy` codebase.
+This document describes the testing approach, patterns, and organization for the `cc-proxy` codebase.
 
 ---
 
 ## Testing Philosophy
 
-`cc_proxy` follows a **layered testing strategy** with clear separation between:
+`cc-proxy` follows a **layered testing strategy** with clear separation between:
 
 1. **Unit tests**: Fast, isolated tests for individual functions and classes
 2. **Integration tests**: Tests involving FastAPI TestClient and mocked dependencies
@@ -71,8 +71,8 @@ def test_it_works()  # Too vague
 
 ```python
 from fastapi.testclient import TestClient
-from cc_proxy.app.main import app
-from cc_proxy.app.transport import OllamaClient
+from app.main import app
+from app.transport import OllamaClient
 
 def test_messages_requires_auth(monkeypatch) -> None:
     monkeypatch.setenv("CC_PROXY_AUTH_KEY", "test-key")
@@ -97,8 +97,8 @@ def test_messages_returns_ok(auth_client, minimal_messages_request) -> None:
 **Pattern: Direct function calls, no mocking**
 
 ```python
-from cc_proxy.app.adapt_request import to_anthropic_compat
-from cc_proxy.app.models_anthropic import MessagesRequest
+from app.adapt_request import to_anthropic_compat
+from app.models_anthropic import MessagesRequest
 
 def test_to_anthropic_compat_preserves_tool_blocks() -> None:
     req = MessagesRequest.model_validate({
@@ -153,7 +153,7 @@ def test_thinking_policy_logs_when_dropped(monkeypatch, caplog) -> None:
 **Pattern: Subprocess management + health checks**
 
 ```python
-from cc_proxy.tests.utils import run_manage, wait_for_health_ok, ensure_proxy_stopped
+from tests.utils import run_manage, wait_for_health_ok, ensure_proxy_stopped
 
 def test_proxy_lifecycle() -> None:
     result = run_manage(["proxy-start"], timeout_s=10)
@@ -191,7 +191,7 @@ def test_thinking_capability(model_name, expected) -> None:
 
 ## Reusable Fixtures
 
-All common fixtures are defined in `cc_proxy/tests/conftest.py`.
+All common fixtures are defined in `tests/conftest.py`.
 
 ### Available Fixtures
 
@@ -240,7 +240,7 @@ Create minimal valid Anthropic response dictionaries.
 
 **Usage:**
 ```python
-from cc_proxy.tests.conftest import make_anthropic_response
+from tests.conftest import make_anthropic_response
 
 response = make_anthropic_response(
     id="msg_custom",
@@ -258,7 +258,7 @@ response = make_anthropic_response(
 ### Process Management
 
 ```python
-from cc_proxy.tests.utils import (
+from tests.utils import (
     run_manage,      # Run scripts/manage.py with args
     run_cmd,         # Run arbitrary command
     ensure_proxy_stopped,  # Stop proxy gracefully or forcefully
@@ -269,7 +269,7 @@ from cc_proxy.tests.utils import (
 ### Environment Manipulation
 
 ```python
-from cc_proxy.tests.utils import env_get, env_set
+from tests.utils import env_get, env_set
 
 # Read .env file
 value = env_get(Path(".devcontainer/.env"), "CC_PROXY_AUTH_KEY")
@@ -311,7 +311,7 @@ This project follows FastAPI's recommended testing patterns:
 
 - **Core API endpoints**: ~95% (health, messages, auth)
 - **Request/response adaptation**: ~90% (passthrough, filtering, thinking policy)
-- **Tool calling**: ~85% (passthrough, use_tools marker; repair not implemented)
+- **Tool calling**: ~85% (passthrough, use_tools marker, and tool-use repair)
 - **Routing**: ~95% (aliases, config loading, timeout)
 - **Observability**: ~95% (logging, middleware, OTel)
 - **Repo integration**: ~90% (setup, lifecycle, config)
@@ -341,43 +341,43 @@ This project follows FastAPI's recommended testing patterns:
 ### Run All Tests
 
 ```bash
-pytest cc_proxy/tests/
+pytest tests/
 ```
 
 ### Run Specific Category
 
 ```bash
 # Unit tests only (fast)
-pytest cc_proxy/tests/test_adapt_*.py
-pytest cc_proxy/tests/test_models_*.py
+pytest tests/test_adapt_*.py
+pytest tests/test_models_*.py
 
 # API tests
-pytest cc_proxy/tests/test_api_*.py
+pytest tests/test_api_*.py
 
 # Integration tests (slower, may require Ollama)
-pytest cc_proxy/tests/test_repo_*.py
-pytest cc_proxy/tests/test_claude_*.py
-pytest cc_proxy/tests/test_ollama_*.py
-pytest cc_proxy/tests/test_thinking_ollama_*.py
+pytest tests/test_repo_*.py
+pytest tests/test_claude_*.py
+pytest tests/test_ollama_*.py
+pytest tests/test_thinking_ollama_*.py
 ```
 
 ### Run with Verbose Output
 
 ```bash
-pytest cc_proxy/tests/ -v
+pytest tests/ -v
 ```
 
 ### Run with Coverage
 
 ```bash
-pytest cc_proxy/tests/ --cov=cc_proxy --cov-report=html
+pytest tests/ --cov=app --cov-report=html
 open htmlcov/index.html
 ```
 
 ### Run Specific Test
 
 ```bash
-pytest cc_proxy/tests/test_api_auth.py::test_auth_accepts_bearer -v
+pytest tests/test_api_auth.py::test_auth_accepts_bearer -v
 ```
 
 ---
@@ -397,11 +397,11 @@ pytest cc_proxy/tests/test_api_auth.py::test_auth_accepts_bearer -v
 ### Example: Adding a New API Test
 
 ```python
-# cc_proxy/tests/test_api_custom_feature.py
+# tests/test_api_custom_feature.py
 
 from fastapi.testclient import TestClient
-from cc_proxy.app.main import app
-from cc_proxy.tests.conftest import make_anthropic_response
+from app.main import app
+from tests.conftest import make_anthropic_response
 
 def test_custom_feature_returns_expected_response(
     auth_client,

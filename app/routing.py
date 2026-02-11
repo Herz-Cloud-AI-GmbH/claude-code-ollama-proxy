@@ -18,6 +18,7 @@ class RoutingConfig:
     verbose_tool_logging: bool
     tool_call_streaming_enabled: bool
     ollama_timeout_seconds: float | None
+    user_config_path: str | None = None
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -27,23 +28,40 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _detect_repo_root(start: Path) -> Path:
+    """Find repository root by locating `cc-proxy.yaml`."""
+    for candidate in (start, *start.parents):
+        if (candidate / "cc-proxy.yaml").exists():
+            return candidate
+    return start
+
+
+def _resolve_user_config_path(path_value: str, repo_root: Path) -> Path:
+    expanded = Path(path_value).expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return (repo_root / expanded).resolve()
+
+
 def load_routing_config(
     *,
     repo_root: Path | None = None,
     user_config_path: Path | None = None,
 ) -> RoutingConfig:
     if repo_root is None:
-        repo_root = Path(__file__).resolve().parents[2]
+        repo_root = _detect_repo_root(Path(__file__).resolve().parent)
 
-    proxy_path = repo_root / "cc_proxy" / "cc-proxy.yaml"
+    proxy_path = repo_root / "cc-proxy.yaml"
+    proxy_data = _read_yaml(proxy_path)
     if user_config_path is None:
-        home_path = Path.home() / ".cc-proxy" / "cc-proxy.user.yaml"
-        repo_path = repo_root / ".cc-proxy" / "cc-proxy.user.yaml"
-        user_path = home_path if home_path.exists() else repo_path
+        configured_user_path = str(proxy_data.get("user_config_path") or "").strip()
+        if configured_user_path:
+            user_path = _resolve_user_config_path(configured_user_path, repo_root)
+        else:
+            user_path = Path.home() / ".config" / "cc-proxy" / "cc-proxy.user.yaml"
     else:
         user_path = user_config_path
 
-    proxy_data = _read_yaml(proxy_path)
     user_data = _read_yaml(user_path)
 
     proxy_aliases = proxy_data.get("aliases", {}) or {}
@@ -120,6 +138,7 @@ def load_routing_config(
         verbose_tool_logging=verbose_tool_logging,
         tool_call_streaming_enabled=tool_call_streaming_enabled,
         ollama_timeout_seconds=ollama_timeout_seconds,
+        user_config_path=str(user_path),
     )
 
 

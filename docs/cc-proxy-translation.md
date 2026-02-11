@@ -5,7 +5,7 @@ requests to Ollama's Anthropic‑compatible `/v1/messages` endpoint. The proxy
 preserves content blocks (text, thinking, tool_use, tool_result) and performs minimal
 sanitization.
 
-**Implementation**: `cc_proxy/app/adapt_request.py` (see `to_anthropic_compat()` and `prepare_anthropic_payload()`)
+**Implementation**: `app/adapt_request.py` (see `to_anthropic_compat()` and `prepare_anthropic_payload()`)
 
 ---
 
@@ -36,7 +36,7 @@ The proxy applies a **thinking policy** after initial content passthrough:
 - If the model is **not** thinking-capable, drop those blocks and emit a warning
   header/log entry (`X-CC-Proxy-Warning: thinking_dropped`).
 
-Thinking-capable models are listed in `cc_proxy/cc-proxy.yaml` (`thinking_capable_models`).
+Thinking-capable models are listed in `cc-proxy.yaml` (`thinking_capable_models`).
 All other models default to **not** thinking-capable.
 
 **Code**: `apply_thinking_policy()` in `adapt_request.py`
@@ -128,16 +128,16 @@ If tools are present and streaming is disabled, the proxy returns `400 invalid_r
 
 ## 6) Where this is implemented
 
-- `cc_proxy/app/adapt_request.py`
+- `app/adapt_request.py`
   - `to_anthropic_compat()` - Anthropic passthrough with field sanitization
   - `apply_thinking_policy()` - Drop thinking blocks for non-capable models
   - `prepare_anthropic_payload()` - Main entry point combining all adaptations
   - `_apply_use_tools_marker()` - Detect and strip "use_tools" marker
   - `_ensure_tool_use_system_instruction()` - Inject tool-forcing system instruction
-- `cc_proxy/app/adapt_response.py`
+- `app/adapt_response.py`
   - `from_anthropic_compat()` - Validate and normalize Anthropic response + repair tool_use blocks
   - `stream_from_anthropic_compat()` - SSE streaming adapter with tool repair
-- `cc_proxy/app/transport.py`
+- `app/transport.py`
   - `chat_anthropic_compat_stream()` - Streaming transport method
-- `cc_proxy/app/capability.py`
+- `app/capability.py`
   - `get_tool_capability()` - Tool capability detection (whitelist + `/api/show`)

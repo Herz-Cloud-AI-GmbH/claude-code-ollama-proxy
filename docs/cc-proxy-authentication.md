@@ -51,8 +51,8 @@ If missing, it returns **HTTP 500**:
 If either matches, the request is authorized. Otherwise it returns **HTTP 401**.
 
 Relevant implementation:
-- `cc_proxy/app/auth.py` → `_expected_key()`, `require_auth()`, `auth_dependency()`
-- `cc_proxy/app/main.py` → `/v1/messages` uses `auth_dependency`
+- `app/auth.py` → `_expected_key()`, `require_auth()`, `auth_dependency()`
+- `app/main.py` → `/v1/messages` uses `auth_dependency`
 
 ## 3) Response shape required by Claude Code
 
@@ -67,7 +67,7 @@ Claude Code expects an Anthropic Messages response with:
 - `usage`
 
 Relevant implementation:
-- `cc_proxy/app/main.py` → `POST /v1/messages` returns `MessagesResponse`
+- `app/main.py` → `POST /v1/messages` returns `MessagesResponse`
 
 ## 4) Known CLI behavior: interactive mode ignores settings on fresh installs
 

@@ -106,9 +106,9 @@ sequenceDiagram
 ### Repo structure (current)
 
 ```
-cc_proxy/
+repo/
 ├── app/
-│   ├── apps_env.py                 # load cc_proxy/.env
+│   ├── apps_env.py                 # load .env
 │   ├── auth.py                     # auth dependency (Bearer/x-api-key)
 │   ├── main.py                     # FastAPI app, lifespan, routes
 │   ├── settings.py                 # centralized configuration (Settings class)
@@ -149,11 +149,11 @@ cc_proxy/
 
 ## Testing approach
 
-Tests are written in `cc_proxy/tests` and focus on:
+Tests are written in `tests` and focus on:
 - **Auth behavior** (`test_api_auth.py`, `test_api_auth_otel_events.py`)
 - **Request logging middleware** (`test_request_logging_middleware.py`)
 - **Observability and JSON log schema** (`test_observability_logging.py`, `test_json_log_utils.py`)
-- **Endpoint behavior** (`test_api_messages_stub.py`, `test_api_endpoint_events.py`)
+- **Endpoint behavior** (`test_api_messages_contract.py`, `test_api_endpoint_events.py`)
 - **Tracing spans** (`test_api_tracing_spans.py`)
 - **Request/response adaptation** (`test_adapt_request_*.py`, `test_adapt_response_*.py`)
 - **Routing and aliases** (`test_routing_*.py`)

@@ -1,8 +1,8 @@
 **/.env
 **/__pycache__
 
-# Runtime config for cc-proxy (template lives at cc_proxy/sample.env)
-cc_proxy/.env
+# Runtime config for cc-proxy (template lives at sample.env)
+.env
 
 tmp/**
 **/out/**

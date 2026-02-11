@@ -84,7 +84,7 @@ Implement (repo-only wiring; proxy can remain empty):
    - A minimal FastAPI app with `GET /health` so `manage.py` can do a readiness check.
 
 Tests (own file; must be green before Phase 1):
-- `cc_proxy/tests/test_phase0_repo_integration.py` (or similar)
+- `tests/test_phase0_repo_integration.py` (or similar)
   - Verifies that:
     - `scripts/manage.py setup ollama-proxy` writes/updates `.devcontainer/.env` as expected
     - `scripts/manage.py proxy-start` results in `/health` reachable on `CC_PROXY_PORT`
@@ -119,7 +119,7 @@ Implement:
    - This is purely to prove Claude Code can talk to the gateway without interactive login.
 
 Tests (own file; must be green before Phase 2):
-- `cc_proxy/tests/test_phase1_claude_auth_handshake.py`
+- `tests/test_phase1_claude_auth_handshake.py`
   - Proxy-level:
     - missing/wrong auth → 401
     - bearer auth ok
@@ -140,23 +140,23 @@ Tests (own file; must be green before Phase 2):
 #### Detailed steps (code + behavior)
 
 1. **Anthropic request/response models (minimal, permissive)**
-   - `cc_proxy/app/models_anthropic.py`:
+   - `app/models_anthropic.py`:
      - Keep `MessagesRequest` permissive (`extra="allow"`), but explicitly require `model` + `messages`.
      - Ensure `MessagesResponse` has `content: [{type:"text", text:"..."}]` for basic completions.
 
 2. **Backend models for Ollama (OpenAI‑compat path first)**
-   - `cc_proxy/app/models_ollama.py`:
+   - `app/models_ollama.py`:
      - Add minimal request/response shapes for `POST /v1/chat/completions` (OpenAI‑compat).
      - Keep fields minimal: `model`, `messages`, `temperature`, `max_tokens`, `stream=False`.
 
 3. **Backend transport**
-   - `cc_proxy/app/transport.py`:
+   - `app/transport.py`:
      - `OllamaClient` with `chat_openai_compat(request)` using `httpx.AsyncClient`.
      - Map connection/timeouts to `502` with sanitized error payloads.
      - Base URL defaults to `http://host.docker.internal:11434` (devcontainer reality).
 
 4. **Routing + alias mapping**
-   - `cc_proxy/app/routing.py`:
+   - `app/routing.py`:
      - Map Claude Code model aliases to local models:
        - `sonnet` → `qwen3:14b`
        - `haiku` → `qwen3:8b`
@@ -164,19 +164,19 @@ Tests (own file; must be green before Phase 2):
      - Keep policies minimal for Phase 2 (no tool schema simplification yet).
 
 5. **RequestAdapter (minimal)**
-   - `cc_proxy/app/adapt_request.py`:
+   - `app/adapt_request.py`:
      - Convert Anthropic Messages API → OpenAI‑compat `chat/completions`.
      - Drop unsupported Anthropic fields (`thinking`, `reasoning_effort`, prompt caching/metadata).
      - Preserve `messages` order and roles; do not emit tools in Phase 2.
 
 6. **ResponseAdapter (minimal)**
-   - `cc_proxy/app/adapt_response.py`:
+   - `app/adapt_response.py`:
      - Convert OpenAI‑style response to Anthropic Messages response:
        - Read `choices[0].message.content` → `ContentBlockText`.
        - Map `usage` if present (otherwise default zeros).
 
 7. **Route handler (real backend call)**
-   - `cc_proxy/app/main.py`:
+   - `app/main.py`:
      - Replace stub in `POST /v1/messages` with:
        - resolve model alias → route
        - adapt request → OpenAI‑compat payload
@@ -265,13 +265,13 @@ Tests (own file; must be green before Phase 2):
 
 #### Proxy modules touched (Phase 2)
 
-- `cc_proxy/app/models_anthropic.py`
-- `cc_proxy/app/models_ollama.py`
-- `cc_proxy/app/routing.py`
-- `cc_proxy/app/adapt_request.py`
-- `cc_proxy/app/adapt_response.py`
-- `cc_proxy/app/transport.py`
-- `cc_proxy/app/main.py`
+- `app/models_anthropic.py`
+- `app/models_ollama.py`
+- `app/routing.py`
+- `app/adapt_request.py`
+- `app/adapt_response.py`
+- `app/transport.py`
+- `app/main.py`
 
 #### Request and response propagation (Phase 2)
 
@@ -312,7 +312,7 @@ All transformations must be explicitly documented in `docs/cc-proxy-translation.
 **Chunks (test‑gated, one file per task):**
 
 3a.1 **Canonical text flattening**
-- **Code**: `cc_proxy/app/adapt_request.py`
+- **Code**: `app/adapt_request.py`
 - **What**: normalize Anthropic `content` blocks into a single OpenAI‑compat string.
 - **Why**: OpenAI‑compat expects `messages[].content` to be a string; content blocks otherwise trigger validation errors.
 - **Robustness**:
@@ -320,7 +320,7 @@ All transformations must be explicitly documented in `docs/cc-proxy-translation.
   - trim whitespace per block; drop empty blocks
   - join with `\\n\\n` for paragraph preservation
   - empty result → `""`
-- **Tests**: `cc_proxy/tests/test_adapt_request_phase3a.py`:
+- **Tests**: `tests/test_adapt_request_phase3a.py`:
   - list of text blocks → joined string
   - mixed text + non‑text blocks → text only
   - whitespace‑only blocks → dropped
@@ -331,7 +331,7 @@ All transformations must be explicitly documented in `docs/cc-proxy-translation.
 - **Tests**: N/A (doc update only).
 
 3a.3 **Optional observability hooks**
-- **Code**: `cc_proxy/app/observability.py` or middleware
+- **Code**: `app/observability.py` or middleware
 - **What**: log event when content blocks are flattened (no content values).
 - **Why**: debug invalid payloads without leaking data.
 - **Tests**: `caplog` asserts event presence.
@@ -341,11 +341,11 @@ All transformations must be explicitly documented in `docs/cc-proxy-translation.
 **Purpose:** decide how reasoning blocks are treated and make the loss of information explicit.
 
 3b.1 **Policy definition**
-- **Code**: `cc_proxy/app/adapt_request.py`
+- **Code**: `app/adapt_request.py`
 - **What**: detect `thinking` / `redacted_thinking` blocks.
 - **Why**: OpenAI‑compat does not accept these block types.
 - **Robustness**: drop or map to a placeholder string (policy must be explicit).
-- **Tests**: `cc_proxy/tests/test_adapt_request_phase3b.py` with thinking blocks.
+- **Tests**: `tests/test_adapt_request_phase3b.py` with thinking blocks.
 
 3b.2 **Warning surface**
 - **Code**: middleware or response hook
@@ -358,28 +358,28 @@ All transformations must be explicitly documented in `docs/cc-proxy-translation.
 **Purpose:** normalize tool calling so Claude Code can execute tools reliably.
 
 3c.1 **OpenAI tool_calls → Anthropic tool_use**
-- **Code**: `cc_proxy/app/adapt_response.py`
+- **Code**: `app/adapt_response.py`
 - **What**: convert OpenAI `tool_calls` to Anthropic `tool_use` blocks.
 - **Why**: Claude Code expects Anthropic tool_use format.
 - **Robustness**: validate `name`, `id`, `input` type.
-- **Tests**: `cc_proxy/tests/test_adapt_response_phase3c.py` fixtures.
+- **Tests**: `tests/test_adapt_response_phase3c.py` fixtures.
 
 3c.2 **Repair malformed tool_use**
-- **Code**: `cc_proxy/app/adapt_response.py`
+- **Code**: `app/adapt_response.py`
 - **What**: add missing `id`, parse stringified JSON `input`.
 - **Why**: local models frequently emit tool calls with structural defects.
 - **Robustness**: strict JSON parsing; drop unrepairable blocks.
 - **Tests**: stringified input, missing id, invalid JSON.
 
 3c.3 **Tool name validation**
-- **Code**: `cc_proxy/app/adapt_response.py`
+- **Code**: `app/adapt_response.py`
 - **What**: verify tool name exists in the request tool list.
 - **Why**: prevent hallucinated tools from being executed.
 - **Robustness**: drop invalid tool_use blocks; optional policy for tool‑less retry.
 - **Tests**: unknown tool name → dropped.
 
 3c.4 **Tool result propagation**
-- **Code**: `cc_proxy/app/adapt_request.py`
+- **Code**: `app/adapt_request.py`
 - **What**: map Anthropic `tool_result` blocks back into OpenAI‑compat messages.
 - **Why**: preserve the tool execution loop.
 - **Robustness**: ensure tool_result content is serializable text or JSON string.
@@ -482,9 +482,9 @@ Tests:
 
 ## Module-by-module tasks (one module per task)
 
-This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is scoped to *at most one module* and includes: what it does, required classes/functions, and tests.
+This is the **work breakdown** for the current repository layout (`app/`, `tests/`). Each task is scoped to *at most one module* and includes: what it does, required classes/functions, and tests.
 
-### 1) `cc_proxy/app/settings.py` — configuration
+### 1) `app/settings.py` — configuration
 
 - **What it does**
   - Centralizes all configuration: ports, auth mode/key, Ollama base URL, model alias mapping, feature flags, cache TTL/paths.
@@ -498,12 +498,12 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `capability_ttl_seconds: int = 86400`
     - `model_aliases: dict[str, str]` (e.g. `{"sonnet": "qwen3:14b"}`)
 - **Tests**
-  - `cc_proxy/tests/test_settings.py`
+  - `tests/test_settings.py`
     - env overrides work
     - defaults are correct
     - invalid values rejected
 
-### 2) `cc_proxy/app/auth.py` — auth dependency
+### 2) `app/auth.py` — auth dependency
 
 - **What it does**
   - Ensures the proxy isn’t accidentally open: rejects requests missing/invalid auth.
@@ -514,12 +514,12 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `Authorization: Bearer <key>` (pairs well with `ANTHROPIC_AUTH_TOKEN`)
   - Raises `HTTPException(status_code=401)` on mismatch
 - **Tests**
-  - `cc_proxy/tests/test_auth.py`
+  - `tests/test_auth.py`
     - missing header → 401
     - wrong key → 401
     - correct key → 200
 
-### 3) `cc_proxy/app/models_anthropic.py` — Anthropic Messages API models (subset)
+### 3) `app/models_anthropic.py` — Anthropic Messages API models (subset)
 
 - **What it does**
   - Defines the minimal Pydantic models needed to parse Claude Code `POST /v1/messages` and to return Anthropic-shaped responses.
@@ -532,11 +532,11 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `ContentBlockToolUse(type="tool_use", id, name, input)`
   - `MessagesResponse(role="assistant", content=[...], ...)`
 - **Tests**
-  - `cc_proxy/tests/test_models_anthropic.py`
+  - `tests/test_models_anthropic.py`
     - parses representative request fixtures
     - serializes response fixtures to the expected shape
 
-### 4) `cc_proxy/app/models_ollama.py` — backend models
+### 4) `app/models_ollama.py` — backend models
 
 - **What it does**
   - Defines request/response models for whichever backend API we choose:
@@ -549,10 +549,10 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
   - OpenAI-compat (subset):
     - `OpenAIChatCompletionsRequest/Response`
 - **Tests**
-  - `cc_proxy/tests/test_models_ollama.py`
+  - `tests/test_models_ollama.py`
     - parses sample responses for chosen backend mode(s)
 
-### 5) `cc_proxy/app/transport.py` — backend HTTP client
+### 5) `app/transport.py` — backend HTTP client
 
 - **What it does**
   - Owns all outbound calls to Ollama and normalizes transport errors.
@@ -564,11 +564,11 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - connect/timeouts → 502
     - non-2xx passthrough with sanitized error body
 - **Tests**
-  - `cc_proxy/tests/test_transport.py` using mocked HTTPX (e.g. `respx`)
+  - `tests/test_transport.py` using mocked HTTPX (e.g. `respx`)
     - endpoint selection correctness
     - timeout/connect error mapping
 
-### 6) `cc_proxy/app/routing.py` — model alias mapping + policy
+### 6) `app/routing.py` — model alias mapping + policy
 
 - **What it does**
   - Maps Claude Code model names (`sonnet`, `opus`, `haiku`) to concrete Ollama models and declares per-model policy knobs.
@@ -580,11 +580,11 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `resolve_model(requested: str) -> str`
     - `policy_for(resolved_model: str) -> Policy`
 - **Tests**
-  - `cc_proxy/tests/test_routing.py`
+  - `tests/test_routing.py`
     - alias mapping
     - unknown model handling (explicit error vs passthrough)
 
-### 7) `cc_proxy/app/adapt_request.py` — RequestAdapter
+### 7) `app/adapt_request.py` — RequestAdapter
 
 - **What it does**
   - Converts Anthropic `/v1/messages` requests into the selected Ollama request format while dropping/rewriting unsupported fields.
@@ -595,12 +595,12 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `thinking`, `extended_thinking`, `reasoning_effort`, prompt caching/metadata fields (expand as observed)
   - Tool schema simplification when `policy.tool_schema_simplification == "basic"`
 - **Tests**
-  - `cc_proxy/tests/test_adapt_request.py`
+  - `tests/test_adapt_request.py`
     - param stripping is deterministic
     - model mapping is correct
     - simplification behaves as intended
 
-### 8) `cc_proxy/app/adapt_response.py` — ResponseValidator + repair
+### 8) `app/adapt_response.py` — ResponseValidator + repair
 
 - **What it does**
   - Converts backend responses into a Claude-Code-acceptable Anthropic response and repairs common tool-call defects.
@@ -614,11 +614,11 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - validate tool name exists in request tool list (if tools provided)
     - drop unrepairable tool blocks
 - **Tests**
-  - `cc_proxy/tests/test_tool_repair.py`
+  - `tests/test_tool_repair.py`
     - fixtures for each repair pass
     - output always valid Anthropic-shaped response
 
-### 9) `cc_proxy/app/capability.py` — capability detection + cache
+### 9) `app/capability.py` — capability detection + cache
 
 - **What it does**
   - Detects per-model capability level and caches results (in memory + on disk with TTL).
@@ -631,11 +631,11 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - probe suite: basic completion + “calculator tool” tool-call test
     - classify: `none | basic | structured`
 - **Tests**
-  - `cc_proxy/tests/test_capability.py`
+  - `tests/test_capability.py`
     - TTL freshness vs stale behavior
     - classification logic with mocked backend responses
 
-### 10) `cc_proxy/app/main.py` — FastAPI app wiring
+### 10) `app/main.py` — FastAPI app wiring
 
 - **What it does**
   - Wires middleware, dependencies, adapters, and transport into a runnable API.
@@ -653,7 +653,7 @@ This is the **work breakdown** for the codebase under `cc_proxy/`. Each task is 
     - `GET /capabilities` (optional)
     - `POST /v1/messages` (non-streaming first)
 - **Tests**
-  - `cc_proxy/tests/test_contract.py`
+  - `tests/test_contract.py`
     - `/health` 200 + JSON
     - `/v1/messages` returns Anthropic-shaped response
     - auth enforcement works

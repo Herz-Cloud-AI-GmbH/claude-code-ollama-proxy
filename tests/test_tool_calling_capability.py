@@ -30,6 +30,22 @@ def _find_tools_request(entries: list[dict]) -> dict:
     raise AssertionError("No request with tools found in fixture")
 
 
+def _assert_ollama_reachable() -> None:
+    assert_ollama_reachable()
+
+
+def _load_fixture_entries() -> list[dict]:
+    return load_jsonl_fixture(_FIXTURE_NAME, min_entries=1)
+
+
+def _has_tool_use(payload: dict) -> bool:
+    return has_tool_use(payload)
+
+
+def _has_tool_call_text(payload: dict) -> bool:
+    return has_tool_call_text(payload)
+
+
 @pytest.mark.parametrize(
     "model_name",
     [(os.getenv("CC_PROXY_TOOL_CALL_MODEL") or "").strip() or "qwen3:4b"],

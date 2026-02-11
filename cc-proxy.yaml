@@ -1,5 +1,6 @@
 schema_version: 1
 default_alias: sonnet
+user_config_path: "~/.config/cc-proxy/cc-proxy.user.yaml"
 
 thinking_capable_models:
   - qwen3:14b
@@ -16,12 +17,12 @@ aliases:
   sonnet:
     promise:
       tool_calling: planned
-      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."
+      notes: "Tool calling depends on model capability and runtime config."
   haiku:
     promise:
       tool_calling: planned
-      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."
+      notes: "Tool calling depends on model capability and runtime config."
   opus:
     promise:
       tool_calling: planned
-      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."
+      notes: "Tool calling depends on model capability and runtime config."

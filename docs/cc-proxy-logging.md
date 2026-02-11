@@ -175,8 +175,8 @@ The following events are emitted during request processing:
 
 The proxy loads runtime settings from:
 
-- `~/.cc-proxy/.env` (user-owned)
-- Template: `cc_proxy/sample.env`
+- `.env` (repo-root, user-owned)
+- Template: `sample.env`
 
 Key values for OpenTelemetry:
 

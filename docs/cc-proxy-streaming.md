@@ -201,7 +201,7 @@ sequenceDiagram
 
 ### Key Components
 
-**1. Transport Layer** (`cc_proxy/app/transport.py`)
+**1. Transport Layer** (`app/transport.py`)
 
 ```python
 async def chat_anthropic_compat_stream(
@@ -214,7 +214,7 @@ async def chat_anthropic_compat_stream(
             yield chunk
 ```
 
-**2. Response Adapter** (`cc_proxy/app/adapt_response.py`)
+**2. Response Adapter** (`app/adapt_response.py`)
 
 ```python
 async def stream_from_anthropic_compat(
@@ -234,7 +234,7 @@ async def stream_from_anthropic_compat(
     """
 ```
 
-**3. Endpoint Handler** (`cc_proxy/app/main.py`)
+**3. Endpoint Handler** (`app/main.py`)
 
 ```python
 @app.post("/v1/messages", response_model=None)
@@ -294,7 +294,7 @@ Run streaming tests with the `streaming` pytest marker:
 pytest -m streaming
 
 # Specific streaming test
-pytest cc_proxy/tests/test_streaming.py -v
+pytest tests/test_streaming.py -v
 ```
 
 ### Test Coverage
@@ -631,7 +631,7 @@ curl -N localhost:3456/v1/messages -d '{"model":"sonnet","stream":true,"messages
 When diagnosing streaming issues:
 
 ```yaml
-# ~/.cc-proxy/cc-proxy.user.yaml
+# ~/.config/cc-proxy/cc-proxy.user.yaml
 verbose_tool_logging: true
 debug_logging:
   request_body: true

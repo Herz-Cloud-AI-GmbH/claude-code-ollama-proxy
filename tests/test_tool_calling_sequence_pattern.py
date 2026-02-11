@@ -6,7 +6,7 @@ import os
 import httpx
 import pytest
 
-from cc_proxy.app.main import app
+from app.main import app
 
 from .conftest import load_jsonl_fixture, has_tool_use, has_tool_call_text
 from .utils import assert_ollama_reachable
@@ -53,6 +53,14 @@ def _prepare_sequence_payloads(model_name: str) -> tuple[dict, dict, dict]:
     tool_payload["system"].append({"type": "text", "text": tool_call_system})
 
     return payload_1, payload_2, tool_payload
+
+
+def _has_tool_use(payload: dict) -> bool:
+    return has_tool_use(payload)
+
+
+def _has_tool_call_text(payload: dict) -> bool:
+    return has_tool_call_text(payload)
 
 
 @pytest.mark.parametrize(

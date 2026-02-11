@@ -127,7 +127,7 @@ class JsonLogFormatter(logging.Formatter):
 
 def setup_observability(*, repo_root=None) -> None:
     """
-    Configure JSON logging with trace correlation, and load `cc_proxy/.env` early.
+    Configure JSON logging with trace correlation, and load `.env` early.
 
     This function is intended to be called once at process startup.
     """

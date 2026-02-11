@@ -9,8 +9,8 @@ from pathlib import Path
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
-import cc_proxy.app.observability as obs
-from cc_proxy.app.observability import JsonLogFormatter, TraceContextFilter, setup_observability
+import app.observability as obs
+from app.observability import JsonLogFormatter, TraceContextFilter, setup_observability
 
 
 def test_json_logs_include_trace_id_and_span_id_when_in_span(monkeypatch) -> None:
@@ -43,12 +43,11 @@ def test_json_logs_include_trace_id_and_span_id_when_in_span(monkeypatch) -> Non
 
 
 def test_setup_observability_loads_apps_env(tmp_path, monkeypatch) -> None:
-    (tmp_path / "cc_proxy").mkdir()
-    (tmp_path / "cc_proxy" / ".env").write_text("OTEL_SERVICE_NAME=cc-proxy-from-dotenv\n")
+    (tmp_path / ".env").write_text("OTEL_SERVICE_NAME=cc-proxy-from-dotenv\n")
 
     monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
 
-    # Calling setup should load cc_proxy/.env first
+    # Calling setup should load .env first
     monkeypatch.setattr(obs, "_configured", False)
     setup_observability(repo_root=Path(tmp_path))
     assert os.environ.get("OTEL_SERVICE_NAME") == "cc-proxy-from-dotenv"

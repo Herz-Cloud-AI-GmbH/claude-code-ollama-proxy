@@ -1,0 +1,27 @@
+schema_version: 1
+default_alias: sonnet
+
+thinking_capable_models:
+  - qwen3:14b
+  - qwen3:8b
+  - qwen3:4b
+
+tool_calling_capable_models: []
+
+verbose_tool_logging: false
+
+tool_call_streaming_enabled: false
+
+aliases:
+  sonnet:
+    promise:
+      tool_calling: planned
+      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."
+  haiku:
+    promise:
+      tool_calling: planned
+      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."
+  opus:
+    promise:
+      tool_calling: planned
+      notes: "Phase 2 is text-only; tool calling is targeted for Phase 3+."

@@ -1,0 +1,62 @@
+{
+  "model": "haiku",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "can you translate to french?"
+        }
+      ]
+    }
+  ],
+  "system": [
+    {
+      "type": "text",
+      "text": "x-anthropic-billing-header: cc_version=2.1.22.d17; cc_entrypoint=cli;"
+    },
+    {
+      "type": "text",
+      "text": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    {
+      "type": "text",
+      "text": "Analyze if this message indicates a new conversation topic. If it does, extract a 2-3 word title that captures the new topic. Format your response as a JSON object with two fields: 'isNewTopic' (boolean) and 'title' (string, or null if isNewTopic is false)."
+    }
+  ],
+  "tools": [],
+  "metadata": {
+    "user_id": "user_89661485d55a2aa261880a4ec129636c7e67e46e199142c6a2416482fdb6b742_account__session_0e7b54b3-07c2-4fd3-bc7e-65bfdf6d9282"
+  },
+  "max_tokens": 32000,
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "isNewTopic": {
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "isNewTopic",
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "stream": true
+}

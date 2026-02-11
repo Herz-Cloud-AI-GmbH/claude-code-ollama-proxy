@@ -1,0 +1,27 @@
+{
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "get_weather",
+      "input": "{\"location\": \"Berlin\"}",
+      "id": "toolu_fixed"
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get weather",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
+import pytest
+from fastapi.testclient import TestClient
+
+from cc_proxy.app.main import app
+from cc_proxy.app.transport import OllamaClient
+
+from .utils import ensure_proxy_stopped
+
+
+@pytest.fixture(autouse=True)
+def _ensure_cc_proxy_not_left_running() -> None:
+    """
+    Safety net: tests in this suite may start a real uvicorn subprocess.
+    Ensure we don't leave it running after any test.
+    """
+    yield
+    ensure_proxy_stopped()
+
+
+# ========== Reusable test fixtures to reduce boilerplate ==========
+
+
+def make_anthropic_response(
+    *,
+    id: str = "msg_test",
+    model: str = "qwen3:14b",
+    content: list[dict[str, Any]] | None = None,
+    stop_reason: str = "end_turn",
+    input_tokens: int = 1,
+    output_tokens: int = 1,
+) -> dict[str, Any]:
+    """
+    Create a minimal valid Anthropic Messages API response.
+
+    Usage:
+        response = make_anthropic_response(
+            content=[{"type": "text", "text": "Hello"}]
+        )
+    """
+    if content is None:
+        content = [{"type": "text", "text": "ok"}]
+
+    return {
+        "id": id,
+        "type": "message",
+        "role": "assistant",
+        "model": model,
+        "content": content,
+        "stop_reason": stop_reason,
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+    }
+
+
+@pytest.fixture
+def mock_ollama_success(monkeypatch) -> Callable[[dict | None], None]:
+    """
+    Fixture that provides a function to mock successful Ollama responses.
+
+    Usage:
+        def test_something(mock_ollama_success):
+            mock_ollama_success()  # uses default response
+            # OR
+            mock_ollama_success({"content": [{"type": "text", "text": "custom"}]})
+    """
+    def _mock(response_override: dict[str, Any] | None = None) -> None:
+        async def fake_chat(self, request) -> dict:
+            if response_override:
+                return response_override
+            return make_anthropic_response()
+
+        monkeypatch.setattr(OllamaClient, "chat_anthropic_compat", fake_chat)
+
+    return _mock
+
+
+@pytest.fixture
+def auth_client(monkeypatch, mock_ollama_success) -> TestClient:
+    """
+    Pre-configured TestClient with auth key set and Ollama mocked.
+
+    Usage:
+        def test_something(auth_client):
+            r = auth_client.post("/v1/messages", json={...})
+            assert r.status_code == 200
+    """
+    monkeypatch.setenv("CC_PROXY_AUTH_KEY", "test-key")
+    mock_ollama_success()
+
+    client = TestClient(app)
+    # Inject auth header into all requests
+    client.headers["Authorization"] = "Bearer test-key"
+    return client
+
+
+@pytest.fixture
+def minimal_messages_request() -> dict[str, Any]:
+    """
+    Minimal valid Anthropic Messages API request payload.
+
+    Usage:
+        def test_something(auth_client, minimal_messages_request):
+            r = auth_client.post("/v1/messages", json=minimal_messages_request)
+    """
+    return {
+        "model": "sonnet",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 16,
+    }
+

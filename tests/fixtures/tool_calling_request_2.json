@@ -1,0 +1,40 @@
+{
+  "model": "qwen3:4b",
+  "max_tokens": 128,
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "name": "get_time",
+      "description": "Get the current time for a location.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "City name, e.g. Tokyo"
+          }
+        },
+        "required": ["location"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "system": [
+    {
+      "type": "text",
+      "text": "You must call the tool. Do not answer in natural language."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Use get_time with location=Tokyo. Return only the tool call."
+        }
+      ]
+    }
+  ]
+}

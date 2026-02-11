@@ -1,0 +1,29 @@
+{
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "bad_tool",
+      "input": {
+        "location": "Berlin"
+      },
+      "id": "toolu_bad"
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get weather",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+schema_version: 1
+
+aliases:
+  sonnet: qwen3:4b
+  haiku: qwen3:4b
+  opus: qwen2.5-coder:14b
+
+debug_logging:
+  log_mode: overwrite
+  request_headers: true
+  request_body: true
+  response_headers: true
+  response_body: true
+
+tool_call_streaming_enabled: true

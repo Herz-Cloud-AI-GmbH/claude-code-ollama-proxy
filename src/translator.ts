@@ -18,18 +18,25 @@ import { healToolArguments, generateToolUseId } from "./tool-healing.js";
 
 /**
  * Default model name mapping: Claude model names → Ollama model names.
- * Users can override/extend via CLI or environment variables.
+ *
+ * This map is intentionally **empty** by default.  Every Claude model name
+ * falls through to `defaultModel` (configured via --default-model or
+ * proxy.config.json) unless the user adds explicit entries.
+ *
+ * AI-agent-first approach (recommended):
+ *   Set ANTHROPIC_MODEL=<your-ollama-model> when launching Claude Code so
+ *   the model name it sends is already an Ollama name; the proxy passes it
+ *   through directly without consulting this map.
+ *
+ * Custom tier routing example (proxy.config.json):
+ *   "modelMap": {
+ *     "claude-opus-4-5":          "qwen3:32b",
+ *     "claude-sonnet-4-5":        "qwen3:8b",
+ *     "claude-haiku-4-5":         "qwen3:1.7b",
+ *     "claude-3-5-sonnet-20241022": "qwen3:8b"
+ *   }
  */
-export const DEFAULT_MODEL_MAP: ModelMap = {
-  "claude-opus-4-5": "llama3.1:70b",
-  "claude-sonnet-4-5": "llama3.1:8b",
-  "claude-haiku-4-5": "llama3.2:3b",
-  "claude-3-5-sonnet-20241022": "llama3.1:8b",
-  "claude-3-5-haiku-20241022": "llama3.2:3b",
-  "claude-3-opus-20240229": "llama3.1:70b",
-  "claude-3-sonnet-20240229": "llama3.1:8b",
-  "claude-3-haiku-20240307": "llama3.2:3b",
-};
+export const DEFAULT_MODEL_MAP: ModelMap = {};
 
 /**
  * Generate a unique message ID in the format `msg_<16 random hex chars>`.

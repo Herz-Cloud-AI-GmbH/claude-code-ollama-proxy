@@ -244,6 +244,13 @@ export type ProxyConfig = {
   modelMap: ModelMap;
   defaultModel: string;
   verbose: boolean;
+  /**
+   * When true, requests with a `thinking` field sent to a non-thinking-capable
+   * model return HTTP 400.  When false (default), the `thinking` field is
+   * silently stripped and the request proceeds — this keeps AI coding agent
+   * sessions alive when they auto-generate thinking requests.
+   */
+  strictThinking: boolean;
 };
 
 // ─── Anthropic Error Types ───────────────────────────────────────────────────

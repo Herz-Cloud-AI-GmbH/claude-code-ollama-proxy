@@ -93,6 +93,7 @@ const config: ProxyConfig = {
   modelMap: { "claude-3-5-sonnet-20241022": "llama3.1:8b" },
   defaultModel: "llama3.1",
   verbose: false,
+  strictThinking: false,
 };
 
 let httpServer: ReturnType<typeof import("node:http").createServer>;
@@ -345,15 +346,128 @@ describe("POST /v1/messages/count_tokens", () => {
 });
 
 describe("POST /v1/messages (thinking validation)", () => {
-  it("returns 400 when thinking requested for non-thinking model", async () => {
+  it("silently drops thinking field for non-thinking model (default behaviour)", async () => {
+    // With strictThinking: false (default), the thinking field is stripped and
+    // the request proceeds — no 400, the mock Ollama just responds normally.
     const res = await postMessages({
       model: "claude-3-5-sonnet-20241022", // maps to llama3.1:8b (non-thinking)
       messages: [{ role: "user", content: "Think hard" }],
       thinking: { type: "enabled", budget_tokens: 5000 },
     });
+    // Should NOT be 400 — the thinking field is silently stripped
+    expect(res.status).toBe(200);
+    const body = await res.json() as { type: string };
+    expect(body.type).toBe("message");
+  });
+
+  it("returns 400 when thinking requested for non-thinking model with strictThinking=true", async () => {
+    const strictApp = createServer({
+      ...config,
+      ollamaUrl: `http://127.0.0.1:${mockOllamaPort}`,
+      strictThinking: true,
+    });
+    const strictServer = await new Promise<ReturnType<typeof import("node:http").createServer>>(
+      (resolve) => {
+        const s = strictApp.listen(0, "127.0.0.1", () => resolve(s));
+      },
+    );
+    const addr = strictServer.address();
+    const strictPort = typeof addr === "object" && addr ? addr.port : 0;
+
+    const res = await fetch(`http://127.0.0.1:${strictPort}/v1/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        messages: [{ role: "user", content: "Think hard" }],
+        thinking: { type: "enabled", budget_tokens: 5000 },
+      }),
+    });
     expect(res.status).toBe(400);
     const body = await res.json() as { type: string; error: { type: string; message: string } };
     expect(body.type).toBe("error");
     expect(body.error.type).toBe("thinking_not_supported");
+
+    strictServer.close();
+  });
+});
+
+// ─── Config file tests ────────────────────────────────────────────────────────
+
+import { writeDefaultConfigFile, loadConfigFile, mergeConfig } from "../src/config.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { rmSync } from "node:fs";
+
+describe("writeDefaultConfigFile / loadConfigFile", () => {
+  const tmpPath = join(tmpdir(), `proxy-test-config-${Date.now()}.json`);
+
+  it("writes a valid default config file and reads it back", () => {
+    writeDefaultConfigFile(tmpPath);
+    const loaded = loadConfigFile(tmpPath);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.version).toBe("1");
+    expect(loaded!.port).toBe(3000);
+    expect(loaded!.ollamaUrl).toBe("http://localhost:11434");
+    expect(loaded!.strictThinking).toBe(false);
+    expect(loaded!.verbose).toBe(false);
+    rmSync(tmpPath);
+  });
+
+  it("writes partial config with overrides", () => {
+    writeDefaultConfigFile(tmpPath, { defaultModel: "qwen3:8b", strictThinking: true });
+    const loaded = loadConfigFile(tmpPath);
+    expect(loaded!.defaultModel).toBe("qwen3:8b");
+    expect(loaded!.strictThinking).toBe(true);
+    rmSync(tmpPath);
+  });
+
+  it("returns null for a non-existent path", () => {
+    expect(loadConfigFile("/tmp/does-not-exist-xyz.json")).toBeNull();
+  });
+});
+
+describe("mergeConfig", () => {
+  const cliDefaults = {
+    port: 3000,
+    ollamaUrl: "http://localhost:11434",
+    defaultModel: "llama3.1",
+    modelMap: {},
+    strictThinking: false,
+    verbose: false,
+  };
+
+  it("returns CLI defaults when file is null", () => {
+    const result = mergeConfig(null, cliDefaults);
+    expect(result).toEqual(cliDefaults);
+  });
+
+  it("file values are applied when present and no env var overrides", () => {
+    const file = {
+      version: "1" as const,
+      defaultModel: "qwen3:8b",
+      port: 4000,
+    };
+    const result = mergeConfig(file, cliDefaults);
+    expect(result.defaultModel).toBe("qwen3:8b");
+    // File port wins when PORT env var is not set (which is the case in tests)
+    expect(result.port).toBe(4000);
+  });
+
+  it("file modelMap is merged with CLI overrides", () => {
+    const file = {
+      version: "1" as const,
+      modelMap: { "claude-sonnet-4-5": "qwen3:8b" },
+    };
+    const cliWithMap = { ...cliDefaults, modelMap: { "claude-haiku-4-5": "qwen3:1.7b" } };
+    const result = mergeConfig(file, cliWithMap);
+    expect(result.modelMap["claude-sonnet-4-5"]).toBe("qwen3:8b");
+    expect(result.modelMap["claude-haiku-4-5"]).toBe("qwen3:1.7b");
+  });
+
+  it("file strictThinking overrides default false", () => {
+    const file = { version: "1" as const, strictThinking: true };
+    const result = mergeConfig(file, cliDefaults);
+    expect(result.strictThinking).toBe(true);
   });
 });

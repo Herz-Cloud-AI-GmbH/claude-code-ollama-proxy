@@ -24,18 +24,21 @@ describe("generateMessageId", () => {
 });
 
 describe("mapModel", () => {
-  it("maps a known Claude model to the Ollama model", () => {
+  it("falls through to defaultModel when DEFAULT_MODEL_MAP is empty", () => {
+    // DEFAULT_MODEL_MAP is intentionally empty; all Claude models fall through
+    // to defaultModel unless the user configures explicit mappings.
     const result = mapModel(
       "claude-3-5-sonnet-20241022",
       DEFAULT_MODEL_MAP,
       "llama3.1",
     );
-    expect(result).toBe("llama3.1:8b");
+    expect(result).toBe("llama3.1");
   });
 
-  it("returns the original model name for non-Claude models", () => {
-    const result = mapModel("mistral:latest", {}, "llama3.1");
-    expect(result).toBe("mistral:latest");
+  it("passes through non-Claude model names directly (AI-agent-first pass-through)", () => {
+    // Users can set ANTHROPIC_MODEL=qwen3:8b in Claude Code; the proxy passes it through.
+    expect(mapModel("qwen3:8b", {}, "llama3.1")).toBe("qwen3:8b");
+    expect(mapModel("mistral:latest", {}, "llama3.1")).toBe("mistral:latest");
   });
 
   it("falls back to defaultModel for unknown Claude models", () => {

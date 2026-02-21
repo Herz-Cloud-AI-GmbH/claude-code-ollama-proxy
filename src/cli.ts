@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { existsSync } from "node:fs";
 import { createServer } from "./server.js";
 import { DEFAULT_MODEL_MAP } from "./translator.js";
+import {
+  CONFIG_FILE_NAME,
+  loadConfigFile,
+  mergeConfig,
+  writeDefaultConfigFile,
+} from "./config.js";
 import type { ModelMap, ProxyConfig } from "./types.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,6 +57,15 @@ program
   )
   .version(loadVersion())
   .option(
+    "-c, --config <path>",
+    `Path to a proxy config JSON file (default: ${CONFIG_FILE_NAME} in current dir if it exists)`,
+  )
+  .option(
+    "--init",
+    `Write a default ${CONFIG_FILE_NAME} config file to the current directory and exit`,
+    false,
+  )
+  .option(
     "-p, --port <number>",
     "Port to listen on",
     (v) => {
@@ -66,7 +82,7 @@ program
   )
   .option(
     "-m, --model-map <mapping>",
-    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-3-5-sonnet-20241022=llama3.1:8b',
+    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-sonnet-4-5=qwen3:8b',
     (v, prev) => parseModelMap(v, prev),
     { ...DEFAULT_MODEL_MAP },
   )
@@ -75,42 +91,127 @@ program
     "Default Ollama model for unmapped Claude models",
     process.env.DEFAULT_MODEL ?? "llama3.1",
   )
+  .option(
+    "--strict-thinking",
+    "Reject thinking requests for non-thinking models with HTTP 400 (default: silently strip thinking field)",
+    false,
+  )
   .option("-v, --verbose", "Enable verbose request/response logging", false)
   .action((options: {
+    config?: string;
+    init: boolean;
     port: number;
     ollamaUrl: string;
     modelMap: ModelMap;
     defaultModel: string;
+    strictThinking: boolean;
     verbose: boolean;
   }) => {
-    const config: ProxyConfig = {
+    // ── --init: write default config file and exit ─────────────────────────
+    if (options.init) {
+      const dest = resolve(process.cwd(), CONFIG_FILE_NAME);
+      if (existsSync(dest)) {
+        console.error(`Config file already exists: ${dest}`);
+        process.exit(1);
+      }
+      writeDefaultConfigFile(dest, {
+        port: options.port,
+        ollamaUrl: options.ollamaUrl,
+        defaultModel: options.defaultModel,
+        modelMap: Object.keys(options.modelMap).length > 0 ? options.modelMap : {},
+        strictThinking: options.strictThinking,
+        verbose: options.verbose,
+      });
+      console.log(`Created config file: ${dest}`);
+      console.log("Edit it, then run: claude-code-ollama-proxy");
+      process.exit(0);
+    }
+
+    // ── Resolve config file ────────────────────────────────────────────────
+    const configPath = options.config
+      ? resolve(process.cwd(), options.config)
+      : existsSync(resolve(process.cwd(), CONFIG_FILE_NAME))
+        ? resolve(process.cwd(), CONFIG_FILE_NAME)
+        : null;
+
+    let configFilePath: string | null = null;
+    let fileConfig = null;
+    if (configPath) {
+      fileConfig = loadConfigFile(configPath);
+      if (fileConfig) configFilePath = configPath;
+    }
+
+    // ── Merge config: file < env vars < CLI flags ──────────────────────────
+    const merged = mergeConfig(fileConfig, {
       port: options.port,
       ollamaUrl: options.ollamaUrl,
-      modelMap: options.modelMap,
       defaultModel: options.defaultModel,
+      modelMap: options.modelMap,
+      strictThinking: options.strictThinking,
       verbose: options.verbose,
+    });
+
+    const config: ProxyConfig = {
+      port: merged.port,
+      ollamaUrl: merged.ollamaUrl,
+      modelMap: merged.modelMap,
+      defaultModel: merged.defaultModel,
+      verbose: merged.verbose,
+      strictThinking: merged.strictThinking,
     };
 
     const app = createServer(config);
 
     const server = app.listen(config.port, () => {
+      const mapEntries = Object.entries(config.modelMap);
       console.log("╔═══════════════════════════════════════════════╗");
       console.log("║     claude-code-ollama-proxy                  ║");
       console.log("╚═══════════════════════════════════════════════╝");
       console.log(`  Proxy listening on  : http://localhost:${config.port}`);
       console.log(`  Forwarding to Ollama: ${config.ollamaUrl}`);
       console.log(`  Default model       : ${config.defaultModel}`);
+      console.log(`  Strict thinking     : ${config.strictThinking}`);
       console.log(`  Verbose logging     : ${config.verbose}`);
+      if (configFilePath) {
+        console.log(`  Config file         : ${configFilePath}`);
+      }
       console.log("");
-      console.log("  Configure Claude Code:");
+      if (mapEntries.length > 0) {
+        console.log("  Model map (Claude → Ollama):");
+        for (const [k, v] of mapEntries) {
+          console.log(`    ${k.padEnd(40)} → ${v}`);
+        }
+        console.log("");
+      }
+      console.log("  ── AI-agent-first setup (recommended) ─────────");
+      console.log("  Set ANTHROPIC_MODEL=<your-ollama-model> in Claude Code.");
+      console.log("  The proxy passes non-Claude model names through directly.");
+      console.log("");
+      console.log("  ── Quick start ─────────────────────────────────");
+      console.log("  Option A — AI-agent-first (no model map needed):");
       console.log(`    ANTHROPIC_API_KEY=any-value \\`);
+      console.log(`    ANTHROPIC_MODEL=<your-ollama-model> \\`);
       console.log(`    ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`);
       console.log("    claude");
       console.log("");
-      console.log("  ⚠  Extended Thinking Support:");
-      console.log("     Thinking requests are ONLY accepted for these Ollama model prefixes:");
+      console.log("  Option B — use proxy default model:");
+      console.log(`    ANTHROPIC_API_KEY=any-value \\`);
+      console.log(`    ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`);
+      console.log(`    claude  # proxy routes all Claude model names → ${config.defaultModel}`);
+      console.log("");
+      console.log("  ⚠  Extended Thinking:");
+      if (config.strictThinking) {
+        console.log("     strict mode — thinking requests for non-thinking models return HTTP 400.");
+      } else {
+        console.log("     thinking field is SILENTLY STRIPPED for non-thinking models.");
+        console.log("     Use --strict-thinking to get HTTP 400 instead.");
+      }
+      console.log("     Thinking-capable Ollama model prefixes:");
       console.log("       qwen3, deepseek-r1, magistral, nemotron, glm4, qwq");
-      console.log("     Requests with a 'thinking' field for any other model return HTTP 400.");
+      if (!configFilePath) {
+        console.log("");
+        console.log(`  Tip: run with --init to create a ${CONFIG_FILE_NAME} config file.`);
+      }
       console.log("");
     });
 

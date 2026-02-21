@@ -29,31 +29,52 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 
 ```bash
 # Pull a model in Ollama (example)
-ollama pull llama3.1
+ollama pull qwen3:8b
 ```
 
 ### Run with npx (no installation)
 
 ```bash
-npx claude-code-ollama-proxy
+npx claude-code-ollama-proxy --default-model qwen3:8b
 ```
 
 ### Install globally
 
 ```bash
 npm install -g claude-code-ollama-proxy
-claude-code-ollama-proxy
+claude-code-ollama-proxy --default-model qwen3:8b
 ```
 
-### Use with Claude Code
+### AI-Agent-First Setup (Recommended)
+
+Set `ANTHROPIC_MODEL` to your Ollama model name when launching Claude Code.
+The proxy passes non-Claude model names through directly — no model map needed:
 
 ```bash
-ANTHROPIC_API_KEY=any-placeholder-value \
+# Terminal 1 – start proxy
+claude-code-ollama-proxy --default-model qwen3:8b
+
+# Terminal 2 – run Claude Code
+ANTHROPIC_API_KEY=any-value \
+ANTHROPIC_MODEL=qwen3:8b \
+ANTHROPIC_SMALL_FAST_MODEL=qwen3:1.7b \
 ANTHROPIC_BASE_URL=http://localhost:3000 \
 claude
 ```
 
-That's it — Claude Code will now route all requests through Ollama.
+`ANTHROPIC_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL` are Claude Code environment
+variables. Setting them to Ollama model names means Claude Code sends those
+names in API requests, which the proxy passes through directly to Ollama.
+
+### Persistent Config File
+
+Generate and edit a `proxy.config.json` for a persistent setup:
+
+```bash
+claude-code-ollama-proxy --init
+$EDITOR proxy.config.json
+claude-code-ollama-proxy      # auto-discovers proxy.config.json
+```
 
 ## Extended Thinking
 
@@ -120,26 +141,47 @@ split longer words into 4-char chunks (each chunk = 1 token).
 
 | CLI Flag | Environment Variable | Default | Description |
 |---|---|---|---|
+| `--config, -c` | — | auto-discovers `proxy.config.json` | Config file path |
+| `--init` | — | — | Write default config file and exit |
 | `--port, -p` | `PORT` | `3000` | Port to listen on |
 | `--ollama-url, -u` | `OLLAMA_URL` | `http://localhost:11434` | Ollama base URL |
-| `--model-map, -m` | — | See below | Claude→Ollama model mapping |
+| `--model-map, -m` | — | empty | Claude→Ollama model mapping (repeatable) |
 | `--default-model, -d` | `DEFAULT_MODEL` | `llama3.1` | Fallback model |
+| `--strict-thinking` | — | `false` | Return 400 for thinking on non-thinking models |
 | `--verbose, -v` | — | `false` | Enable debug logging |
 
-### Default Model Map
+### Claude Code Environment Variables
 
-| Claude Model | Ollama Model |
+Set these when launching Claude Code (not the proxy):
+
+| Variable | Effect |
 |---|---|
-| `claude-opus-4-5` | `llama3.1:70b` |
-| `claude-sonnet-4-5` | `llama3.1:8b` |
-| `claude-haiku-4-5` | `llama3.2:3b` |
-| `claude-3-5-sonnet-20241022` | `llama3.1:8b` |
-| `claude-3-5-haiku-20241022` | `llama3.2:3b` |
-| `claude-3-opus-20240229` | `llama3.1:70b` |
-| `claude-3-sonnet-20240229` | `llama3.1:8b` |
-| `claude-3-haiku-20240307` | `llama3.2:3b` |
+| `ANTHROPIC_MODEL` | Model name Claude Code uses in all API requests |
+| `ANTHROPIC_SMALL_FAST_MODEL` | Model name for Claude Code's background/fast tasks |
+| `ANTHROPIC_BASE_URL` | Point Claude Code at the proxy (`http://localhost:3000`) |
+| `ANTHROPIC_API_KEY` | Any non-empty value works (proxy ignores it) |
 
-Override with `-m claude-3-5-sonnet-20241022=mistral:latest` or pass a JSON map.
+### Model Mapping
+
+The default model map is **empty** — all Claude model names fall through to
+`--default-model`. This is intentional: tier-specific mappings like
+`claude-opus → llama3.1:70b` assume Ollama models that may not be installed.
+
+**Recommended approach** (AI-agent-first): set `ANTHROPIC_MODEL=<your-ollama-model>`
+in Claude Code. The proxy passes non-Claude model names through directly.
+
+For tier-based routing, configure `proxy.config.json`:
+
+```json
+{
+  "defaultModel": "qwen3:8b",
+  "modelMap": {
+    "claude-opus-4-5":   "qwen3:32b",
+    "claude-sonnet-4-5": "qwen3:8b",
+    "claude-haiku-4-5":  "qwen3:1.7b"
+  }
+}
+```
 
 ## Documentation
 
@@ -159,7 +201,7 @@ npm install
 # Run in development mode (with hot reload via tsx)
 npm run dev
 
-# Run tests (122 tests)
+# Run tests (131 tests)
 npm test
 
 # Build for production

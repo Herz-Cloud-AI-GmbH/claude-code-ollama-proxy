@@ -60,28 +60,41 @@ export function createServer(config: ProxyConfig) {
 
   // ─── Messages (core proxy endpoint) ───────────────────────────────────────
   app.post("/v1/messages", async (req: Request, res: Response) => {
-    const anthropicReq = req.body as AnthropicRequest;
+    const rawReq = req.body as AnthropicRequest;
+    let anthropicReq = rawReq;
 
     if (config.verbose) {
       console.log("[proxy] Anthropic request:", JSON.stringify(anthropicReq, null, 2));
     }
 
     // ── Thinking validation ──
+    // Claude Code (an AI agent) auto-generates thinking requests. Returning 400
+    // would break the session. Default behaviour: strip the thinking field and
+    // continue (log a warning). Set config.strictThinking = true to reject with
+    // 400 instead (useful during development to catch mis-configuration early).
     if (needsThinkingValidation(anthropicReq)) {
       const ollamaModel = mapModel(anthropicReq.model, config.modelMap, config.defaultModel);
       if (!isThinkingCapable(ollamaModel)) {
-        const errorResponse: AnthropicError = {
-          type: "error",
-          error: {
-            type: "thinking_not_supported",
-            message:
-              `The model "${ollamaModel}" (mapped from "${anthropicReq.model}") does not support extended thinking. ` +
-              `Thinking-capable Ollama models: qwen3, deepseek-r1, magistral, nemotron, glm4, qwq. ` +
-              `Remove the "thinking" field or switch to a thinking-capable model.`,
-          },
-        };
-        res.status(400).json(errorResponse);
-        return;
+        if (config.strictThinking) {
+          const errorResponse: AnthropicError = {
+            type: "error",
+            error: {
+              type: "thinking_not_supported",
+              message:
+                `The model "${ollamaModel}" (mapped from "${anthropicReq.model}") does not support extended thinking. ` +
+                `Thinking-capable Ollama models: qwen3, deepseek-r1, magistral, nemotron, glm4, qwq. ` +
+                `Remove the "thinking" field, switch to a thinking-capable model, or disable --strict-thinking.`,
+            },
+          };
+          res.status(400).json(errorResponse);
+          return;
+        }
+        // Silent drop — strip thinking so the request proceeds normally.
+        console.warn(
+          `[proxy] ⚠ thinking request stripped for non-thinking model "${ollamaModel}" ` +
+          `(mapped from "${anthropicReq.model}"). Use --strict-thinking to reject with 400 instead.`,
+        );
+        anthropicReq = { ...anthropicReq, thinking: undefined };
       }
     }
 

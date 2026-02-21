@@ -301,3 +301,59 @@ describe("POST /v1/messages (error handling)", () => {
     testServer.close();
   });
 });
+
+describe("POST /v1/messages/count_tokens", () => {
+  it("returns input_tokens number for a simple request", async () => {
+    const res = await fetch(`${proxyBaseUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        messages: [{ role: "user", content: "Hello world" }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { input_tokens: number };
+    expect(typeof body.input_tokens).toBe("number");
+    expect(body.input_tokens).toBeGreaterThan(0);
+  });
+
+  it("includes system prompt tokens in count", async () => {
+    const resWithSystem = await fetch(`${proxyBaseUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        system: "You are an assistant",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    });
+    const withSystem = await resWithSystem.json() as { input_tokens: number };
+
+    const resWithout = await fetch(`${proxyBaseUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    });
+    const without = await resWithout.json() as { input_tokens: number };
+
+    expect(withSystem.input_tokens).toBeGreaterThan(without.input_tokens);
+  });
+});
+
+describe("POST /v1/messages (thinking validation)", () => {
+  it("returns 400 when thinking requested for non-thinking model", async () => {
+    const res = await postMessages({
+      model: "claude-3-5-sonnet-20241022", // maps to llama3.1:8b (non-thinking)
+      messages: [{ role: "user", content: "Think hard" }],
+      thinking: { type: "enabled", budget_tokens: 5000 },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { type: string; error: { type: string; message: string } };
+    expect(body.type).toBe("error");
+    expect(body.error.type).toBe("thinking_not_supported");
+  });
+});

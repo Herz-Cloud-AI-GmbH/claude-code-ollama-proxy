@@ -107,6 +107,11 @@ program
       console.log(`    ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`);
       console.log("    claude");
       console.log("");
+      console.log("  ⚠  Extended Thinking Support:");
+      console.log("     Thinking requests are ONLY accepted for these Ollama model prefixes:");
+      console.log("       qwen3, deepseek-r1, magistral, nemotron, glm4, qwq");
+      console.log("     Requests with a 'thinking' field for any other model return HTTP 400.");
+      console.log("");
     });
 
     function shutdown(signal: string) {

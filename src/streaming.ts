@@ -9,7 +9,7 @@ import type {
   OllamaStreamChunk,
   PingEvent,
 } from "./types.js";
-import { mapStopReason } from "./translator.js";
+import { mapStopReason, ollamaToolCallsToAnthropic } from "./translator.js";
 
 /**
  * Format a single SSE event as a string ready to be written to the response.
@@ -49,6 +49,8 @@ export function parseOllamaNDJSON(buffer: string): {
   return { chunks, remaining };
 }
 
+type BlockState = "none" | "thinking" | "text" | "tool_use";
+
 /**
  * Stateful stream transformer factory.
  *
@@ -56,8 +58,13 @@ export function parseOllamaNDJSON(buffer: string): {
  * Call `transform(chunk)` for each NDJSON chunk received from Ollama.
  *
  * State machine:
- *  - First non-done chunk: emit message_start + content_block_start + ping
- *  - Each chunk with content: emit content_block_delta
+ *  - First chunk: emit message_start + content_block_start + ping
+ *    - If thinking content present: open "thinking" block
+ *    - Else: open "text" block
+ *  - Thinking → text transition: close thinking block, open text block
+ *  - Each chunk with text content: emit content_block_delta (text_delta)
+ *  - Each chunk with thinking content: emit content_block_delta (thinking_delta)
+ *  - Tool calls chunk: emit tool_use block(s) inline
  *  - Final chunk (done: true): emit content_block_stop + message_delta + message_stop
  */
 export function createStreamTransformer(
@@ -66,6 +73,66 @@ export function createStreamTransformer(
   inputTokens: number,
 ): (chunk: OllamaStreamChunk) => string[] {
   let isFirst = true;
+  let blockState: BlockState = "none";
+  let blockIndex = 0;
+
+  function openBlock(state: BlockState, events: string[], chunk?: OllamaStreamChunk): void {
+    blockState = state;
+    if (state === "thinking") {
+      const contentBlockStart: ContentBlockStartEvent = {
+        type: "content_block_start",
+        index: blockIndex,
+        content_block: { type: "thinking", thinking: "" },
+      };
+      events.push(formatSSEEvent(contentBlockStart));
+    } else if (state === "tool_use" && chunk?.message.tool_calls) {
+      // Tool use blocks are emitted inline and closed immediately
+      const toolBlocks = ollamaToolCallsToAnthropic(chunk.message.tool_calls);
+      for (const block of toolBlocks) {
+        if (block.type !== "tool_use") continue;
+        const startEvent: ContentBlockStartEvent = {
+          type: "content_block_start",
+          index: blockIndex,
+          content_block: { type: "tool_use", id: block.id, name: block.name, input: {} },
+        };
+        events.push(formatSSEEvent(startEvent));
+        const deltaEvent: ContentBlockDeltaEvent = {
+          type: "content_block_delta",
+          index: blockIndex,
+          delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) },
+        };
+        events.push(formatSSEEvent(deltaEvent));
+        const stopEvent: ContentBlockStopEvent = {
+          type: "content_block_stop",
+          index: blockIndex,
+        };
+        events.push(formatSSEEvent(stopEvent));
+        blockIndex++;
+      }
+      // Don't change blockState to "tool_use" since we've already closed them
+      blockState = "none";
+      return;
+    } else {
+      // text
+      const contentBlockStart: ContentBlockStartEvent = {
+        type: "content_block_start",
+        index: blockIndex,
+        content_block: { type: "text", text: "" },
+      };
+      events.push(formatSSEEvent(contentBlockStart));
+    }
+  }
+
+  function closeCurrentBlock(events: string[]): void {
+    if (blockState === "none") return;
+    const contentBlockStop: ContentBlockStopEvent = {
+      type: "content_block_stop",
+      index: blockIndex,
+    };
+    events.push(formatSSEEvent(contentBlockStop));
+    blockIndex++;
+    blockState = "none";
+  }
 
   return function transform(chunk: OllamaStreamChunk): string[] {
     const events: string[] = [];
@@ -91,55 +158,116 @@ export function createStreamTransformer(
       };
       events.push(formatSSEEvent(messageStart));
 
-      const contentBlockStart: ContentBlockStartEvent = {
-        type: "content_block_start",
-        index: 0,
-        content_block: { type: "text", text: "" },
-      };
-      events.push(formatSSEEvent(contentBlockStart));
-
       const ping: PingEvent = { type: "ping" };
-      events.push(formatSSEEvent(ping));
+
+      // Decide which block type to open first
+      if (chunk.message?.thinking) {
+        openBlock("thinking", events);
+        events.push(formatSSEEvent(ping));
+      } else if (chunk.message?.tool_calls && chunk.message.tool_calls.length > 0) {
+        openBlock("tool_use", events, chunk);
+        events.push(formatSSEEvent(ping));
+        // Tool blocks were already closed; nothing more to do for this chunk
+        if (chunk.done) {
+          const outputTokens = chunk.eval_count ?? 0;
+          const stopReason = mapStopReason(chunk.done_reason);
+          const messageDelta: MessageDeltaEvent = {
+            type: "message_delta",
+            delta: { stop_reason: stopReason, stop_sequence: null },
+            usage: { output_tokens: outputTokens },
+          };
+          events.push(formatSSEEvent(messageDelta));
+          const messageStop: MessageStopEvent = { type: "message_stop" };
+          events.push(formatSSEEvent(messageStop));
+        }
+        return events;
+      } else {
+        openBlock("text", events);
+        events.push(formatSSEEvent(ping));
+      }
     }
 
-    // Emit text delta if there is content
-    const text = chunk.message?.content ?? "";
-    if (text && !chunk.done) {
-      const delta: ContentBlockDeltaEvent = {
-        type: "content_block_delta",
-        index: 0,
-        delta: { type: "text_delta", text },
-      };
-      events.push(formatSSEEvent(delta));
-    }
+    const thinkingText = chunk.message?.thinking ?? "";
+    const contentText = chunk.message?.content ?? "";
+    const hasToolCalls = (chunk.message?.tool_calls?.length ?? 0) > 0;
 
-    // Final chunk
-    if (chunk.done) {
-      // Emit remaining text if any (some models put text in the final chunk)
-      if (text) {
+    if (!chunk.done) {
+      // Handle thinking → text transition
+      if (blockState === "thinking" && contentText && !thinkingText) {
+        closeCurrentBlock(events);
+        openBlock("text", events);
+      }
+
+      // Handle tool calls (non-done chunks)
+      if (hasToolCalls && chunk.message.tool_calls) {
+        closeCurrentBlock(events);
+        openBlock("tool_use", events, chunk);
+        return events;
+      }
+
+      // Emit thinking delta
+      if (thinkingText && blockState === "thinking") {
         const delta: ContentBlockDeltaEvent = {
           type: "content_block_delta",
-          index: 0,
-          delta: { type: "text_delta", text },
+          index: blockIndex,
+          delta: { type: "thinking_delta", thinking: thinkingText },
         };
         events.push(formatSSEEvent(delta));
       }
 
-      const contentBlockStop: ContentBlockStopEvent = {
-        type: "content_block_stop",
-        index: 0,
-      };
-      events.push(formatSSEEvent(contentBlockStop));
+      // Emit text delta
+      if (contentText && blockState === "text") {
+        const delta: ContentBlockDeltaEvent = {
+          type: "content_block_delta",
+          index: blockIndex,
+          delta: { type: "text_delta", text: contentText },
+        };
+        events.push(formatSSEEvent(delta));
+      }
+    }
+
+    // Final chunk
+    if (chunk.done) {
+      // Handle thinking → text transition if needed
+      if (blockState === "thinking" && contentText) {
+        closeCurrentBlock(events);
+        openBlock("text", events);
+      }
+
+      // Handle tool calls in final chunk
+      if (hasToolCalls && chunk.message.tool_calls) {
+        closeCurrentBlock(events);
+        openBlock("tool_use", events, chunk);
+      }
+
+      // Emit any remaining text in the final chunk
+      if (contentText && blockState === "text") {
+        const delta: ContentBlockDeltaEvent = {
+          type: "content_block_delta",
+          index: blockIndex,
+          delta: { type: "text_delta", text: contentText },
+        };
+        events.push(formatSSEEvent(delta));
+      }
+
+      // Emit any remaining thinking in the final chunk
+      if (thinkingText && blockState === "thinking") {
+        const delta: ContentBlockDeltaEvent = {
+          type: "content_block_delta",
+          index: blockIndex,
+          delta: { type: "thinking_delta", thinking: thinkingText },
+        };
+        events.push(formatSSEEvent(delta));
+      }
+
+      closeCurrentBlock(events);
 
       const outputTokens = chunk.eval_count ?? 0;
       const stopReason = mapStopReason(chunk.done_reason);
 
       const messageDelta: MessageDeltaEvent = {
         type: "message_delta",
-        delta: {
-          stop_reason: stopReason,
-          stop_sequence: null,
-        },
+        delta: { stop_reason: stopReason, stop_sequence: null },
         usage: { output_tokens: outputTokens },
       };
       events.push(formatSSEEvent(messageDelta));

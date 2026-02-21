@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_MAP,
   anthropicToOllama,
+  anthropicToolsToOllama,
   extractMessageText,
   generateMessageId,
   mapModel,
@@ -234,5 +235,27 @@ describe("ollamaToAnthropic", () => {
   it("uses the requestedModel in the response, not Ollama's model name", () => {
     const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
     expect(result.model).toBe("claude-3-5-sonnet-20241022");
+  });
+});
+
+describe("anthropicToolsToOllama", () => {
+  it("converts tool definitions to Ollama function format", () => {
+    const tools = [
+      {
+        name: "bash",
+        description: "Run bash commands",
+        input_schema: {
+          type: "object",
+          properties: { command: { type: "string" } },
+          required: ["command"],
+        },
+      },
+    ];
+    const result = anthropicToolsToOllama(tools);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("function");
+    expect(result[0].function.name).toBe("bash");
+    expect(result[0].function.description).toBe("Run bash commands");
+    expect(result[0].function.parameters).toEqual(tools[0].input_schema);
   });
 });

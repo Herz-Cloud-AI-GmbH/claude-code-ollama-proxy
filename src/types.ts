@@ -5,7 +5,41 @@ export type AnthropicContentBlockText = {
   text: string;
 };
 
-export type AnthropicContentBlock = AnthropicContentBlockText;
+export type AnthropicContentBlockThinking = {
+  type: "thinking";
+  thinking: string;
+};
+
+export type AnthropicContentBlockToolUse = {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+};
+
+export type AnthropicContentBlockToolResult = {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string | AnthropicContentBlock[];
+};
+
+export type AnthropicContentBlock =
+  | AnthropicContentBlockText
+  | AnthropicContentBlockThinking
+  | AnthropicContentBlockToolUse
+  | AnthropicContentBlockToolResult;
+
+export type AnthropicToolDefinition = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+export type AnthropicThinking = {
+  type: "enabled" | "adaptive";
+  budget_tokens?: number;
+  effort?: string;
+};
 
 export type AnthropicMessage = {
   role: "user" | "assistant";
@@ -22,6 +56,9 @@ export type AnthropicRequest = {
   top_p?: number;
   top_k?: number;
   stop_sequences?: string[];
+  tools?: AnthropicToolDefinition[];
+  tool_choice?: { type: "auto" | "any" | "none" } | { type: "tool"; name: string };
+  thinking?: AnthropicThinking;
 };
 
 export type AnthropicUsage = {
@@ -58,7 +95,10 @@ export type MessageStartEvent = {
 export type ContentBlockStartEvent = {
   type: "content_block_start";
   index: number;
-  content_block: { type: "text"; text: string };
+  content_block:
+    | { type: "text"; text: string }
+    | { type: "thinking"; thinking: string }
+    | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
 };
 
 export type PingEvent = {
@@ -68,7 +108,10 @@ export type PingEvent = {
 export type ContentBlockDeltaEvent = {
   type: "content_block_delta";
   index: number;
-  delta: { type: "text_delta"; text: string };
+  delta:
+    | { type: "text_delta"; text: string }
+    | { type: "thinking_delta"; thinking: string }
+    | { type: "input_json_delta"; partial_json: string };
 };
 
 export type ContentBlockStopEvent = {
@@ -100,9 +143,26 @@ export type AnthropicSSEEvent =
 
 // ─── Ollama API Types ────────────────────────────────────────────────────────
 
+export type OllamaToolCall = {
+  function: {
+    name: string;
+    arguments: Record<string, unknown> | string;
+  };
+};
+
+export type OllamaToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
 export type OllamaMessage = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_calls?: OllamaToolCall[];
 };
 
 export type OllamaOptions = {
@@ -118,12 +178,19 @@ export type OllamaRequest = {
   messages: OllamaMessage[];
   stream: boolean;
   options?: OllamaOptions;
+  tools?: OllamaToolDefinition[];
+  think?: boolean;
 };
 
 export type OllamaResponse = {
   model: string;
   created_at: string;
-  message: OllamaMessage;
+  message: {
+    role: string;
+    content: string;
+    thinking?: string;
+    tool_calls?: OllamaToolCall[];
+  };
   done: true;
   done_reason?: string;
   eval_count?: number;
@@ -137,7 +204,12 @@ export type OllamaResponse = {
 export type OllamaStreamChunk = {
   model: string;
   created_at: string;
-  message: { role: string; content: string };
+  message: {
+    role: string;
+    content: string;
+    thinking?: string;
+    tool_calls?: OllamaToolCall[];
+  };
   done: boolean;
   done_reason?: string;
   eval_count?: number;

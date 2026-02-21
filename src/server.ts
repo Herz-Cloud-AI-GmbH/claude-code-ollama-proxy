@@ -7,8 +7,10 @@ import {
   ollamaChatStream,
   ollamaListModels,
 } from "./ollama-client.js";
-import { anthropicToOllama, generateMessageId, ollamaToAnthropic } from "./translator.js";
+import { anthropicToOllama, generateMessageId, mapModel, ollamaToAnthropic } from "./translator.js";
 import { createStreamTransformer, parseOllamaNDJSON } from "./streaming.js";
+import { isThinkingCapable, needsThinkingValidation } from "./thinking.js";
+import { countRequestTokens } from "./token-counter.js";
 import type { AnthropicError, AnthropicRequest, ProxyConfig } from "./types.js";
 
 export function createServer(config: ProxyConfig) {
@@ -45,12 +47,42 @@ export function createServer(config: ProxyConfig) {
     }
   });
 
+  // ─── Token count endpoint ─────────────────────────────────────────────────
+  app.post("/v1/messages/count_tokens", (req: Request, res: Response) => {
+    try {
+      const anthropicReq = req.body as AnthropicRequest;
+      const inputTokens = countRequestTokens(anthropicReq);
+      res.json({ input_tokens: inputTokens });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   // ─── Messages (core proxy endpoint) ───────────────────────────────────────
   app.post("/v1/messages", async (req: Request, res: Response) => {
     const anthropicReq = req.body as AnthropicRequest;
 
     if (config.verbose) {
       console.log("[proxy] Anthropic request:", JSON.stringify(anthropicReq, null, 2));
+    }
+
+    // ── Thinking validation ──
+    if (needsThinkingValidation(anthropicReq)) {
+      const ollamaModel = mapModel(anthropicReq.model, config.modelMap, config.defaultModel);
+      if (!isThinkingCapable(ollamaModel)) {
+        const errorResponse: AnthropicError = {
+          type: "error",
+          error: {
+            type: "thinking_not_supported",
+            message:
+              `The model "${ollamaModel}" (mapped from "${anthropicReq.model}") does not support extended thinking. ` +
+              `Thinking-capable Ollama models: qwen3, deepseek-r1, magistral, nemotron, glm4, qwq. ` +
+              `Remove the "thinking" field or switch to a thinking-capable model.`,
+          },
+        };
+        res.status(400).json(errorResponse);
+        return;
+      }
     }
 
     const ollamaReq = anthropicToOllama(
@@ -65,9 +97,9 @@ export function createServer(config: ProxyConfig) {
 
     try {
       if (anthropicReq.stream) {
-        await handleStreaming(anthropicReq, ollamaReq.model, ollamaReq, config, res);
+        await handleStreaming(anthropicReq, ollamaReq, config, res);
       } else {
-        await handleNonStreaming(anthropicReq, ollamaReq.model, ollamaReq, config, res);
+        await handleNonStreaming(anthropicReq, ollamaReq, config, res);
       }
     } catch (err) {
       handleError(err, res);
@@ -84,7 +116,6 @@ export function createServer(config: ProxyConfig) {
 
 async function handleNonStreaming(
   anthropicReq: AnthropicRequest,
-  requestedModel: string,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
   config: ProxyConfig,
   res: Response,
@@ -101,7 +132,6 @@ async function handleNonStreaming(
 
 async function handleStreaming(
   anthropicReq: AnthropicRequest,
-  requestedModel: string,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
   config: ProxyConfig,
   res: Response,

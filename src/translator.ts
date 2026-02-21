@@ -1,14 +1,20 @@
 import { randomBytes } from "node:crypto";
 import type {
+  AnthropicContentBlock,
+  AnthropicContentBlockToolUse,
   AnthropicMessage,
   AnthropicRequest,
   AnthropicResponse,
+  AnthropicToolDefinition,
   ModelMap,
   OllamaMessage,
   OllamaOptions,
   OllamaRequest,
   OllamaResponse,
+  OllamaToolCall,
+  OllamaToolDefinition,
 } from "./types.js";
+import { healToolArguments, generateToolUseId } from "./tool-healing.js";
 
 /**
  * Default model name mapping: Claude model names → Ollama model names.
@@ -54,7 +60,7 @@ export function mapModel(
 
 /**
  * Extract plain text from an Anthropic message content field.
- * Content can be a string or an array of content blocks.
+ * Handles: text, thinking, tool_use (input as JSON), tool_result.
  */
 export function extractMessageText(
   content: AnthropicMessage["content"],
@@ -63,8 +69,21 @@ export function extractMessageText(
     return content;
   }
   return content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
+    .map((block) => {
+      switch (block.type) {
+        case "text":
+          return block.text;
+        case "thinking":
+          return block.thinking;
+        case "tool_use":
+          return JSON.stringify(block.input);
+        case "tool_result":
+          if (typeof block.content === "string") return block.content;
+          return extractMessageText(block.content);
+        default:
+          return "";
+      }
+    })
     .join("");
 }
 
@@ -84,6 +103,67 @@ export function mapStopReason(
 }
 
 /**
+ * Translate Anthropic tool definitions to Ollama format.
+ */
+export function anthropicToolsToOllama(
+  tools: AnthropicToolDefinition[],
+): OllamaToolDefinition[] {
+  return tools.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema,
+    },
+  }));
+}
+
+/**
+ * Convert an Anthropic message (potentially containing tool_use or tool_result
+ * blocks) into one or more Ollama messages.
+ */
+function anthropicMessageToOllamaMessages(msg: AnthropicMessage): OllamaMessage[] {
+  if (typeof msg.content === "string") {
+    return [{ role: msg.role, content: msg.content }];
+  }
+
+  // Collect tool_use blocks separately (for assistant messages)
+  const toolUseBlocks = msg.content.filter(
+    (b): b is AnthropicContentBlockToolUse => b.type === "tool_use",
+  );
+  // Collect tool_result blocks (for user messages)
+  const toolResultBlocks = msg.content.filter((b) => b.type === "tool_result");
+
+  if (msg.role === "user" && toolResultBlocks.length > 0) {
+    // Each tool_result becomes a separate "tool" role message
+    return toolResultBlocks.map((b) => {
+      if (b.type !== "tool_result") return { role: "tool" as const, content: "" };
+      const content = typeof b.content === "string"
+        ? b.content
+        : extractMessageText(b.content);
+      return { role: "tool" as const, content };
+    });
+  }
+
+  if (msg.role === "assistant" && toolUseBlocks.length > 0) {
+    // Build text content (non-tool blocks)
+    const textContent = msg.content
+      .filter((b) => b.type === "text" || b.type === "thinking")
+      .map((b) => (b.type === "text" ? b.text : b.type === "thinking" ? b.thinking : ""))
+      .join("");
+
+    const toolCalls: OllamaToolCall[] = toolUseBlocks.map((b) => ({
+      function: { name: b.name, arguments: b.input },
+    }));
+
+    return [{ role: "assistant", content: textContent, tool_calls: toolCalls }];
+  }
+
+  // Fallback: collapse all blocks to text
+  return [{ role: msg.role, content: extractMessageText(msg.content) }];
+}
+
+/**
  * Translate an Anthropic messages request to an Ollama chat request.
  */
 export function anthropicToOllama(
@@ -100,12 +180,9 @@ export function anthropicToOllama(
     messages.push({ role: "system", content: req.system });
   }
 
-  // Convert Anthropic messages
+  // Convert Anthropic messages (may expand to multiple Ollama messages)
   for (const msg of req.messages) {
-    messages.push({
-      role: msg.role,
-      content: extractMessageText(msg.content),
-    });
+    messages.push(...anthropicMessageToOllamaMessages(msg));
   }
 
   const options: OllamaOptions = {};
@@ -130,7 +207,24 @@ export function anthropicToOllama(
     messages,
     stream: req.stream ?? false,
     ...(Object.keys(options).length > 0 && { options }),
+    ...(req.tools && req.tools.length > 0 && { tools: anthropicToolsToOllama(req.tools) }),
+    ...(req.thinking !== undefined && { think: true }),
   };
+}
+
+/**
+ * Translate Ollama tool_calls to Anthropic tool_use content blocks.
+ * Applies tool argument healing for each call.
+ */
+export function ollamaToolCallsToAnthropic(
+  toolCalls: OllamaToolCall[],
+): AnthropicContentBlock[] {
+  return toolCalls.map((tc) => ({
+    type: "tool_use" as const,
+    id: generateToolUseId(),
+    name: tc.function.name,
+    input: healToolArguments(tc.function.arguments),
+  }));
 }
 
 /**
@@ -143,18 +237,39 @@ export function ollamaToAnthropic(
 ): AnthropicResponse {
   const id = messageId ?? generateMessageId();
 
+  const content: AnthropicContentBlock[] = [];
+
+  // Prepend thinking block if present
+  if (ollamaRes.message.thinking) {
+    content.push({ type: "thinking", thinking: ollamaRes.message.thinking });
+  }
+
+  // Add tool_use blocks if any
+  if (ollamaRes.message.tool_calls && ollamaRes.message.tool_calls.length > 0) {
+    content.push(...ollamaToolCallsToAnthropic(ollamaRes.message.tool_calls));
+  }
+
+  // Add text block only if there is text content
+  if (ollamaRes.message.content) {
+    content.push({ type: "text", text: ollamaRes.message.content });
+  }
+
+  // If content is completely empty (can happen with tool-only responses), add empty text
+  if (content.length === 0) {
+    content.push({ type: "text", text: "" });
+  }
+
+  // Determine stop reason
+  const hasToolUse = content.some((b) => b.type === "tool_use");
+  const stopReason = hasToolUse ? "end_turn" : mapStopReason(ollamaRes.done_reason);
+
   return {
     id,
     type: "message",
     role: "assistant",
-    content: [
-      {
-        type: "text",
-        text: ollamaRes.message.content,
-      },
-    ],
+    content,
     model: requestedModel,
-    stop_reason: mapStopReason(ollamaRes.done_reason),
+    stop_reason: stopReason,
     stop_sequence: null,
     usage: {
       input_tokens: ollamaRes.prompt_eval_count ?? 0,

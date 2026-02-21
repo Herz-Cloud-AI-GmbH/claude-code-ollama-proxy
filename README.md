@@ -93,9 +93,9 @@ thinking blocks in the Anthropic format.
 | `glm4` | `glm4:9b` | |
 | `qwq` | `qwq:32b` | |
 
-> ⚠️ **If you send a request with a `thinking` field to any other model, the proxy
-> returns HTTP 400.** This prevents silent failures and surfaces configuration
-> issues immediately.
+> ⚠️ **By default the proxy silently strips the `thinking` field for non-thinking
+> models** so that Claude Code sessions stay alive (Claude Code auto-generates
+> thinking requests). Use `--strict-thinking` to return HTTP 400 instead.
 
 ### Setup for thinking
 
@@ -201,7 +201,7 @@ npm install
 # Run in development mode (with hot reload via tsx)
 npm run dev
 
-# Run tests (131 tests)
+# Run tests (130 tests)
 npm test
 
 # Build for production

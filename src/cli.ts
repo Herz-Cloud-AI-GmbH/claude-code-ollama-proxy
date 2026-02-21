@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
 import { createServer } from "./server.js";
 import { DEFAULT_MODEL_MAP } from "./translator.js";
 import {
@@ -10,9 +12,6 @@ import {
   writeDefaultConfigFile,
 } from "./config.js";
 import type { ModelMap, ProxyConfig } from "./types.js";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -118,7 +117,7 @@ program
         port: options.port,
         ollamaUrl: options.ollamaUrl,
         defaultModel: options.defaultModel,
-        modelMap: Object.keys(options.modelMap).length > 0 ? options.modelMap : {},
+        modelMap: options.modelMap,
         strictThinking: options.strictThinking,
         verbose: options.verbose,
       });
@@ -134,15 +133,11 @@ program
         ? resolve(process.cwd(), CONFIG_FILE_NAME)
         : null;
 
-    let configFilePath: string | null = null;
-    let fileConfig = null;
-    if (configPath) {
-      fileConfig = loadConfigFile(configPath);
-      if (fileConfig) configFilePath = configPath;
-    }
+    const fileConfig = configPath ? loadConfigFile(configPath) : null;
+    const configFilePath = fileConfig ? configPath : null;
 
     // ── Merge config: file < env vars < CLI flags ──────────────────────────
-    const merged = mergeConfig(fileConfig, {
+    const config: ProxyConfig = mergeConfig(fileConfig, {
       port: options.port,
       ollamaUrl: options.ollamaUrl,
       defaultModel: options.defaultModel,
@@ -150,15 +145,6 @@ program
       strictThinking: options.strictThinking,
       verbose: options.verbose,
     });
-
-    const config: ProxyConfig = {
-      port: merged.port,
-      ollamaUrl: merged.ollamaUrl,
-      modelMap: merged.modelMap,
-      defaultModel: merged.defaultModel,
-      verbose: merged.verbose,
-      strictThinking: merged.strictThinking,
-    };
 
     const app = createServer(config);
 

@@ -85,7 +85,7 @@ Creates an Express application with three routes:
 | `/v1/messages` | POST | Core proxy — translates and forwards |
 
 For `/v1/messages`:
-1. Run **thinking validation** — reject with 400 if model doesn't support thinking
+1. Run **thinking validation** — if `thinking` field present and mapped model is not thinking-capable: strip `thinking` field and continue (default), or reject with HTTP 400 (when `strictThinking: true`)
 2. Call `anthropicToOllama()` to build the Ollama request
 3. Fork to `handleNonStreaming` or `handleStreaming`
 
@@ -162,6 +162,8 @@ All API types for both Anthropic and Ollama, plus `ProxyConfig` and error types.
    { model: "claude-3-5-sonnet-20241022", messages: [...], tools: [...] }
 
 2. server.ts: thinking validation (if req.thinking present)
+   → non-thinking model + strictThinking=false: strip thinking field, continue
+   → non-thinking model + strictThinking=true: return HTTP 400
 
 3. translator.ts: anthropicToOllama()
    { model: "llama3.1:8b", messages: [...], tools: [...], stream: false }
@@ -206,15 +208,16 @@ All configuration flows through `ProxyConfig`:
 
 ```typescript
 type ProxyConfig = {
-  port: number;          // HTTP port (default: 3000)
-  ollamaUrl: string;     // Ollama base URL (default: http://localhost:11434)
-  modelMap: ModelMap;    // Claude → Ollama model name map
-  defaultModel: string;  // Fallback model (default: llama3.1)
-  verbose: boolean;      // Log all requests/responses
+  port: number;           // HTTP port (default: 3000)
+  ollamaUrl: string;      // Ollama base URL (default: http://localhost:11434)
+  modelMap: ModelMap;     // Claude → Ollama model name map
+  defaultModel: string;   // Fallback model (default: llama3.1)
+  strictThinking: boolean;// When true, return 400 for thinking on non-thinking models
+  verbose: boolean;       // Log all requests/responses
 };
 ```
 
-Sources (in priority order): CLI flags > environment variables > defaults.
+Sources (lowest → highest): code defaults < config file (`proxy.config.json`) < environment variables < CLI flags.
 
 ---
 

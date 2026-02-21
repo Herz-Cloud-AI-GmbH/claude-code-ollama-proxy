@@ -91,7 +91,7 @@ On failure, the proxy returns an Anthropic-compatible error:
 |---|---|---|
 | `api_connection_error` | 502 | Ollama unreachable |
 | `api_error` | 502 | Ollama returned an error |
-| `thinking_not_supported` | 400 | `thinking` field set but mapped Ollama model is not thinking-capable |
+| `thinking_not_supported` | 400 | `thinking` field set, mapped model not thinking-capable, and `strictThinking: true` |
 
 ---
 

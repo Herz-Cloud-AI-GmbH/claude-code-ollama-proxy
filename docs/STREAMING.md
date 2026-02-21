@@ -148,3 +148,87 @@ This ensures no data is lost even when Ollama sends partial lines.
 |---|---|
 | `stop` (or undefined) | `end_turn` |
 | `length` | `max_tokens` |
+
+---
+
+## Thinking Block Streaming
+
+When using a thinking-capable model (qwen3, deepseek-r1, etc.) with `thinking` enabled,
+Ollama returns chunks with a `message.thinking` field before returning `message.content`.
+
+### Ollama thinking stream
+
+```
+{"model":"qwen3","message":{"role":"assistant","content":"","thinking":"Let me analyze this..."},"done":false}
+{"model":"qwen3","message":{"role":"assistant","content":"","thinking":"I need to consider..."},"done":false}
+{"model":"qwen3","message":{"role":"assistant","content":"The answer is 42.","thinking":""},"done":false}
+{"model":"qwen3","message":{"role":"assistant","content":"","thinking":""},"done":true,"eval_count":25}
+```
+
+### Anthropic SSE for thinking
+
+```
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_xxx","model":"claude-3-5-sonnet-20241022",...}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+event: ping
+data: {"type":"ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me analyze..."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"I need to..."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer is 42."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":25}}
+
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+### Transition Logic
+
+The stream transformer tracks which block type is currently open:
+
+| Previous state | Trigger | Action |
+|---|---|---|
+| `none` | First chunk has `thinking` | Open thinking block (index 0) |
+| `none` | First chunk has `content` only | Open text block (index 0) |
+| `thinking` | Chunk has `content` but no `thinking` | Close thinking block, open text block (next index) |
+| `text` | Tool calls appear | Close text block, emit tool_use block(s) |
+| any | `done: true` | Close current block → message_delta → message_stop |
+
+---
+
+## Tool Call Streaming
+
+When Ollama returns `tool_calls` in a chunk, the proxy emits a complete
+`content_block_start` → `content_block_delta` → `content_block_stop` sequence
+for each tool call, with the `input_json_delta` delta type:
+
+```
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_xxx","name":"bash","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"ls -la\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+```

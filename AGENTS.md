@@ -1,0 +1,246 @@
+# AGENTS.md — AI Agent Onboarding
+
+This file is the primary reference for AI coding agents working on this
+repository. Read it fully before making any changes.
+
+---
+
+## Repository Summary
+
+**`claude-code-ollama-proxy`** is a TypeScript/Node.js CLI tool and HTTP proxy
+server. It translates [Anthropic Messages API](https://docs.anthropic.com/en/api/messages)
+requests (sent by Claude Code or any Anthropic-compatible client) into
+[Ollama chat API](https://docs.ollama.com/api) requests, so local LLMs can be
+used as drop-in replacements for Claude.
+
+---
+
+## Technology Stack
+
+| Component | Technology |
+|---|---|
+| Language | TypeScript (strict mode, ESM modules) |
+| Runtime | Node.js ≥ 18 |
+| HTTP server | Express 5 |
+| CLI | Commander.js |
+| Build | tsup (ESM bundle, `dist/`) |
+| Tests | Vitest |
+| Package manager | npm |
+
+---
+
+## Repository Structure
+
+```
+/
+├── src/
+│   ├── cli.ts            # CLI entry point (Commander.js)
+│   ├── server.ts         # Express app and route handlers
+│   ├── translator.ts     # Anthropic ↔ Ollama protocol translation
+│   ├── streaming.ts      # SSE stream transformer (NDJSON → SSE)
+│   ├── thinking.ts       # Thinking model detection and validation
+│   ├── tool-healing.ts   # Tool call JSON argument repair
+│   ├── token-counter.ts  # Token counting algorithm
+│   ├── ollama-client.ts  # Typed Ollama HTTP client
+│   └── types.ts          # All TypeScript types
+├── tests/
+│   ├── server.test.ts
+│   ├── streaming.test.ts
+│   ├── translator.test.ts
+│   ├── thinking.test.ts
+│   ├── tool-healing.test.ts
+│   └── token-counter.test.ts
+├── docs/
+│   ├── ARCHITECTURE.md   # Detailed architecture overview
+│   ├── API.md            # Endpoint reference
+│   ├── CLI.md            # CLI flag reference
+│   ├── STREAMING.md      # SSE streaming protocol docs
+│   ├── DEPLOYMENT.md     # Docker, systemd, Nginx guides
+│   ├── implementation-plan.md  # Design decisions for v2 features
+│   └── tasks-and-tests-v2.md  # Task breakdown for v2 features
+├── dist/                 # Built output (gitignored)
+├── package.json
+├── tsconfig.json
+├── tsup.config.ts
+└── vitest.config.ts
+```
+
+---
+
+## Essential Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Build (TypeScript → ESM bundle in dist/)
+npm run build
+
+# Run tests (Vitest, all suites)
+npm test
+
+# Development mode (tsx, hot-reload)
+npm run dev
+
+# Run the proxy (after build)
+node dist/cli.js --port 3000
+```
+
+---
+
+## Key Design Principles
+
+1. **Minimal surface**: Only translate what is needed. Pass unknown fields silently.
+2. **Defensive input handling**: All incoming data may be malformed — use try/catch and defaults.
+3. **Token streaming must work end-to-end**: SSE events must be flushed immediately.
+4. **Anthropic error format**: All errors (4xx, 5xx) must return `{ type: "error", error: { type, message } }`.
+5. **Model names preserved**: The original Claude model name is always returned in responses — Ollama model names are never exposed to clients.
+6. **Thinking is opt-in and gated**: Only models with known-good thinking support (via `THINKING_CAPABLE_PREFIXES`) may receive `think: true`.
+
+---
+
+## API Contracts
+
+### Request from Claude Code (Anthropic format)
+
+```typescript
+// POST /v1/messages
+{
+  model: string;            // Claude model name
+  messages: AnthropicMessage[];
+  system?: string;
+  max_tokens?: number;
+  stream?: boolean;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  stop_sequences?: string[];
+  tools?: AnthropicToolDefinition[];
+  thinking?: { type: "enabled" | "adaptive"; budget_tokens?: number; effort?: string };
+}
+
+// POST /v1/messages/count_tokens
+// Same body shape as above — returns { input_tokens: number }
+```
+
+### Request to Ollama
+
+```typescript
+// POST /api/chat
+{
+  model: string;       // Ollama model name (mapped from Claude model)
+  messages: OllamaMessage[];
+  stream: boolean;
+  options?: { num_predict, temperature, top_p, top_k, stop };
+  tools?: OllamaToolDefinition[];
+  think?: boolean;     // only for thinking-capable models
+}
+```
+
+---
+
+## Content Block Translation Table
+
+| Anthropic block type | In message role | Ollama representation |
+|---|---|---|
+| `text` | any | `message.content` string |
+| `thinking` | assistant | `message.thinking` string |
+| `tool_use` | assistant | `message.tool_calls[]` |
+| `tool_result` | user | `{ role: "tool", content: "..." }` message |
+
+---
+
+## Thinking Support Rules
+
+- The `thinking` request field is translated to `think: true` in the Ollama request.
+- If `thinking` is present but the mapped Ollama model name does **not** start with one of `THINKING_CAPABLE_PREFIXES` (`qwen3`, `deepseek-r1`, `magistral`, `nemotron`, `glm4`, `qwq`), the proxy returns HTTP 400 with `error.type = "thinking_not_supported"`.
+- The list is defined in `src/thinking.ts` and exported as `THINKING_CAPABLE_PREFIXES`.
+
+---
+
+## Tool Call Healing Rules
+
+Ollama models sometimes return tool call `arguments` as a JSON-encoded string
+instead of a plain object. The `healToolArguments` function (`src/tool-healing.ts`)
+applies a three-stage repair:
+
+1. Already an object → pass through
+2. Valid JSON string → `JSON.parse`
+3. Double-escaped JSON (`\"key\":\"val\"`) → unescape then parse
+4. Unrecoverable → `{ raw: <original> }`
+
+---
+
+## Token Counting Algorithm
+
+Used by `POST /v1/messages/count_tokens`. No Ollama call is made.
+
+1. Extract all text: `system` + all `messages` content (text, tool_use input, tool_result)
+2. Split by whitespace
+3. For each word: if `length ≤ 4` → 1 token; else → `Math.ceil(length / 4)` tokens
+4. Return `{ input_tokens: total }`
+
+---
+
+## SSE Streaming State Machine
+
+The stream transformer (`src/streaming.ts`) tracks which content block is
+currently open and emits close/open events on transitions:
+
+```
+Initial state: none
+
+none → thinking   (first chunk has message.thinking)
+none → text       (first chunk has message.content, no thinking)
+thinking → text   (chunk has content but no more thinking)
+any → tool_use    (chunk has message.tool_calls — emitted + closed immediately)
+any → (done)      (final chunk: close current block → message_delta → message_stop)
+```
+
+---
+
+## Testing Conventions
+
+- Framework: **Vitest**
+- Test files: `tests/<module>.test.ts`
+- Import from source: `../src/<module>.js` (use `.js` extension for ESM compatibility)
+- Test style: `describe/it` blocks with `expect`
+- Mock Ollama: `tests/server.test.ts` creates an in-process mock HTTP server
+- No external services required for unit tests
+
+---
+
+## Adding a New Feature: Checklist
+
+1. Update `src/types.ts` if new API fields are needed
+2. Add the implementation module in `src/`
+3. Wire it into `src/server.ts` and/or `src/translator.ts`
+4. Write tests in `tests/`
+5. Run `npm test` — all 122+ tests must pass
+6. Run `npm run build` — must succeed with zero errors
+7. Update relevant docs in `docs/`
+8. Update `AGENTS.md` if the architecture changes
+
+---
+
+## Common Gotchas
+
+- **ESM imports**: All local imports must use `.js` extension (TypeScript ESM convention)
+- **Streaming flush**: Always call `res.flushHeaders()` before starting to stream
+- **Buffer handling**: Ollama may send partial NDJSON lines — always use the buffer + `parseOllamaNDJSON` pattern
+- **Model map order**: CLI `--model-map` overrides the default map entries; it does not replace the whole map
+- **Token counts in streaming**: Ollama only sends `eval_count` in the final `done: true` chunk — this is the authoritative output token count for `message_delta.usage`
+
+---
+
+## External API References
+
+| API | Reference |
+|---|---|
+| Anthropic Messages API | https://docs.anthropic.com/en/api/messages |
+| Anthropic Token Counting | https://platform.claude.com/docs/en/build-with-claude/token-counting |
+| Anthropic Extended Thinking | https://platform.claude.com/docs/en/build-with-claude/extended-thinking |
+| Ollama Chat API | https://docs.ollama.com/api |
+| Ollama Thinking | https://docs.ollama.com/capabilities/thinking |
+| Ollama Tool Calling | https://docs.ollama.com/capabilities/tool-calling |
+| Ollama Thinking Models | https://ollama.com/search?c=thinking |

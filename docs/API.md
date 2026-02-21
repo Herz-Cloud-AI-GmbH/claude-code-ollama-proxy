@@ -91,6 +91,47 @@ On failure, the proxy returns an Anthropic-compatible error:
 |---|---|---|
 | `api_connection_error` | 502 | Ollama unreachable |
 | `api_error` | 502 | Ollama returned an error |
+| `thinking_not_supported` | 400 | `thinking` field set but mapped Ollama model is not thinking-capable |
+
+---
+
+## `POST /v1/messages/count_tokens`
+
+Estimates the number of input tokens in a request. Used by Claude Code for
+context window management. **No Ollama call is made** — computation is local.
+
+### Request
+
+Same body shape as `POST /v1/messages`:
+
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "system": "You are a helpful assistant.",
+  "messages": [
+    { "role": "user", "content": "Hello Claude!" }
+  ]
+}
+```
+
+### Response
+
+```json
+{
+  "input_tokens": 12
+}
+```
+
+### Algorithm
+
+1. Extract all text: `system` prompt + all message content (text blocks, tool_use
+   inputs as JSON, tool_result content)
+2. Split by whitespace into words
+3. Words ≤ 4 chars → 1 token; words > 4 chars → `⌈length/4⌉` tokens
+4. Return `{ input_tokens: total }`
+
+This is a deliberate approximation that provides consistent, predictable results
+without requiring access to the actual model tokenizer.
 
 ---
 

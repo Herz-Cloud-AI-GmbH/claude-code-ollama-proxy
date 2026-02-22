@@ -41,6 +41,11 @@ export type ProxyConfigFile = {
   strictThinking?: boolean;
   /** Log every request and response body to stdout. */
   verbose?: boolean;
+  /**
+   * Minimum log level to emit: "error" | "warn" | "info" | "debug".
+   * Overrides `verbose` when set. Defaults to "info" (or "debug" if verbose is true).
+   */
+  logLevel?: string;
 };
 
 /**
@@ -95,6 +100,7 @@ export function mergeConfig<
     modelMap: ModelMap;
     strictThinking: boolean;
     verbose: boolean;
+    logLevel?: string;
   },
 >(file: ProxyConfigFile | null, cli: T): T {
   if (!file) return cli;
@@ -115,5 +121,13 @@ export function mergeConfig<
     strictThinking:
       file.strictThinking !== undefined ? file.strictThinking : cli.strictThinking,
     verbose: file.verbose !== undefined ? file.verbose || cli.verbose : cli.verbose,
+    // CLI wins if explicitly set (--log-level flag or LOG_LEVEL env var folded in by Commander).
+    // Otherwise fall back to the file's logLevel (may also be undefined → server.ts defaults).
+    logLevel:
+      cli.logLevel !== undefined
+        ? cli.logLevel
+        : file.logLevel !== undefined
+          ? (file.logLevel as (typeof cli)["logLevel"])
+          : cli.logLevel,
   };
 }

@@ -137,9 +137,52 @@ Can also be set in the config file:
 
 ### `-v, --verbose`
 
-**Default:** `false`
+**Default:** `false`  
+**Equivalent to:** `--log-level debug`
 
-Enable detailed request and response logging.
+Enable detailed request and response logging. Shorthand for `--log-level debug`.
+
+---
+
+### `--log-level <level>`
+
+**Default:** `info`  
+**Environment:** `LOG_LEVEL`  
+**Values:** `error` | `warn` | `info` | `debug`
+
+Set the minimum log level. Records below this threshold are suppressed before
+any body serialisation, so `info` carries zero overhead for body-level debug
+logging in streaming hot paths.
+
+| Level | Records emitted |
+|-------|----------------|
+| `error` | Connection errors, Ollama errors, unhandled exceptions |
+| `warn`  | Thinking field stripped |
+| `info`  | HTTP request in/out (method, path, status, latency) — **default** |
+| `debug` | Full Anthropic/Ollama request and response bodies; per-SSE-chunk data |
+
+```bash
+# Production — only errors
+claude-code-ollama-proxy --log-level error
+
+# Development — full bodies
+claude-code-ollama-proxy --log-level debug
+# equivalent to:
+claude-code-ollama-proxy --verbose
+
+# Via environment variable
+LOG_LEVEL=debug claude-code-ollama-proxy
+```
+
+All log records are emitted as **OTEL-compatible NDJSON** to stdout.
+See [LOGGING.md](LOGGING.md) for the full logging reference, including
+OpenTelemetry Collector integration.
+
+Can also be set in the config file:
+
+```json
+{ "logLevel": "debug" }
+```
 
 ---
 
@@ -169,7 +212,7 @@ Running `--init` creates a `proxy.config.json` with all settings documented:
     "claude-haiku-4-5":  "qwen3:1.7b"
   },
   "strictThinking": false,
-  "verbose": false
+  "logLevel": "info"
 }
 ```
 
@@ -192,6 +235,7 @@ proxy.config.json  <  environment variables  <  CLI flags
 | `PORT` | `--port` | Listen port |
 | `OLLAMA_URL` | `--ollama-url` | Ollama base URL |
 | `DEFAULT_MODEL` | `--default-model` | Fallback model name |
+| `LOG_LEVEL` | `--log-level` | Log level (error/warn/info/debug) |
 
 **Claude Code env vars (set on the Claude Code side, not the proxy):**
 

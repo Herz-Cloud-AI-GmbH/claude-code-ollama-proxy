@@ -1,3 +1,11 @@
+// ─── Logging ─────────────────────────────────────────────────────────────────
+
+/**
+ * Supported log levels in ascending severity order.
+ * Maps to OTEL SeverityNumber values: DEBUG=5, INFO=9, WARN=13, ERROR=17.
+ */
+export type LogLevel = "error" | "warn" | "info" | "debug";
+
 // ─── Anthropic API Types ────────────────────────────────────────────────────
 
 export type AnthropicContentBlockText = {
@@ -251,6 +259,12 @@ export type ProxyConfig = {
    * sessions alive when they auto-generate thinking requests.
    */
   strictThinking: boolean;
+  /**
+   * Minimum log level to emit.  Records below this threshold are suppressed
+   * before any serialisation work is done (zero-cost at prod INFO level).
+   * If absent, derived from `verbose`: true → "debug", false → "info".
+   */
+  logLevel?: LogLevel;
 };
 
 // ─── Anthropic Error Types ───────────────────────────────────────────────────

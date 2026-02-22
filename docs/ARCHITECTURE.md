@@ -26,6 +26,7 @@ required.
 │         │                   │                                        │
 │         │         ┌─────────▼──────────────────┐                   │
 │         │         │       Request Router        │                   │
+│         │         │  • request/response logging │                   │
 │         │         │  • thinking validation      │                   │
 │         │         │  • non-stream / stream fork │                   │
 │         │         └────────┬───────────────────┘                   │
@@ -38,15 +39,15 @@ required.
 │         │ │lator.ts) │ │.ts)        │ │client.ts)    │            │
 │         │ └──────────┘ └────────────┘ └──────────────┘            │
 │         │         │                                                 │
-│  ┌──────▼──────┐  │  ┌─────────────┐                              │
-│  │ ProxyConfig │  │  │Tool Healing │                              │
-│  │             │  │  │(tool-       │                              │
-│  │ • port      │  │  │ healing.ts) │                              │
-│  │ • ollamaUrl │  │  └─────────────┘                              │
+│  ┌──────▼──────┐  │  ┌─────────────┐  ┌──────────────┐           │
+│  │ ProxyConfig │  │  │Tool Healing │  │   Logger     │           │
+│  │             │  │  │(tool-       │  │ (logger.ts)  │           │
+│  │ • port      │  │  │ healing.ts) │  │ OTEL NDJSON  │           │
+│  │ • ollamaUrl │  │  └─────────────┘  └──────────────┘           │
 │  │ • modelMap  │  │                                                 │
 │  │ • default-  │  │  ┌─────────────┐                              │
 │  │   Model     │  │  │ Thinking    │                              │
-│  │ • verbose   │  │  │(thinking.ts)│                              │
+│  │ • logLevel  │  │  │(thinking.ts)│                              │
 │  └─────────────┘  └──└─────────────┘                              │
 └────────────────────────────────────────────┬─────────────────────┘
                                              │
@@ -68,7 +69,7 @@ Entry point. Uses [Commander.js](https://github.com/tj/commander.js) to parse
 CLI flags and environment variables, then starts the HTTP server.
 
 Responsibilities:
-- Parse `--port`, `--ollama-url`, `--model-map`, `--default-model`, `--verbose`
+- Parse `--port`, `--ollama-url`, `--model-map`, `--default-model`, `--log-level`, `--verbose`
 - Build `ProxyConfig`
 - Call `createServer(config).listen(port)`
 - Print startup banner (including thinking model list)
@@ -85,9 +86,10 @@ Creates an Express application with three routes:
 | `/v1/messages` | POST | Core proxy — translates and forwards |
 
 For `/v1/messages`:
-1. Run **thinking validation** — if `thinking` field present and mapped model is not thinking-capable: strip `thinking` field and continue (default), or reject with HTTP 400 (when `strictThinking: true`)
-2. Call `anthropicToOllama()` to build the Ollama request
-3. Fork to `handleNonStreaming` or `handleStreaming`
+1. **Request/response logging** — every request gets a unique `proxy.request_id`; INFO records emitted on arrival and completion; DEBUG records include full bodies
+2. Run **thinking validation** — if `thinking` field present and mapped model is not thinking-capable: strip `thinking` field and continue (default), or reject with HTTP 400 (when `strictThinking: true`)
+3. Call `anthropicToOllama()` to build the Ollama request
+4. Fork to `handleNonStreaming` or `handleStreaming`
 
 ### `src/translator.ts` — Protocol Translation
 Bidirectional translation between Anthropic and Ollama API shapes.
@@ -149,6 +151,18 @@ Typed fetch wrappers for Ollama's REST API:
 - `ollamaChat(url, req)` — non-streaming chat
 - `ollamaChatStream(url, req)` — streaming chat (returns raw `Response`)
 - `ollamaListModels(url)` — list available models
+
+### `src/logger.ts` — Structured OTEL Logger
+Emits [OpenTelemetry LogRecord](https://opentelemetry.io/docs/specs/otel/logs/data-model/)
+NDJSON to stdout, consumable by the bundled `otelcol` or any OTLP-compatible
+log pipeline.
+
+- `createLogger(config)` — creates a `Logger` instance with level guard
+- `Logger.error/warn/info/debug(body, attributes?)` — emits OTEL JSON record
+- `parseLogLevel(value)` — validates and normalises log level strings
+- `generateRequestId()` — creates `req_<8 hex>` correlation IDs
+
+See [LOGGING.md](LOGGING.md) for the full reference.
 
 ### `src/types.ts` — Shared TypeScript Types
 All API types for both Anthropic and Ollama, plus `ProxyConfig` and error types.
@@ -213,7 +227,8 @@ type ProxyConfig = {
   modelMap: ModelMap;     // Claude → Ollama model name map
   defaultModel: string;   // Fallback model (default: llama3.1)
   strictThinking: boolean;// When true, return 400 for thinking on non-thinking models
-  verbose: boolean;       // Log all requests/responses
+  verbose: boolean;       // Shorthand for logLevel: "debug"
+  logLevel?: LogLevel;    // "error" | "warn" | "info" | "debug" (default: "info")
 };
 ```
 

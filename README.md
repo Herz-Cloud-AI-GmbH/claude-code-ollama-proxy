@@ -17,7 +17,8 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 - 🛠️ **Tool call support** — translate Anthropic tool use blocks ↔ Ollama tool calls
 - 🩹 **Tool call healing** — automatically repair escaped JSON in model tool call responses
 - 🗺️ **Model mapping** — automatic Claude → Ollama model name translation
-- ⚙️ **Configurable** — CLI flags + environment variables
+- 📊 **Structured logging** — OTEL-compatible NDJSON log records; configurable level
+- ⚙️ **Configurable** — CLI flags + environment variables + `proxy.config.json`
 - 📦 **Zero Anthropic key required** — use any placeholder key
 
 ## Quick Start
@@ -148,7 +149,8 @@ split longer words into 4-char chunks (each chunk = 1 token).
 | `--model-map, -m` | — | empty | Claude→Ollama model mapping (repeatable) |
 | `--default-model, -d` | `DEFAULT_MODEL` | `llama3.1` | Fallback model |
 | `--strict-thinking` | — | `false` | Return 400 for thinking on non-thinking models |
-| `--verbose, -v` | — | `false` | Enable debug logging |
+| `--log-level` | `LOG_LEVEL` | `info` | Log level: error\|warn\|info\|debug |
+| `--verbose, -v` | — | `false` | Equivalent to `--log-level debug` |
 
 ### Claude Code Environment Variables
 
@@ -183,11 +185,33 @@ For tier-based routing, configure `proxy.config.json`:
 }
 ```
 
+## Logging
+
+The proxy emits structured **OTEL-compatible NDJSON** log records to stdout:
+
+```json
+{"Timestamp":"2024-01-01T12:00:00.000Z","SeverityNumber":9,"SeverityText":"INFO","Body":"Request completed","Attributes":{"http.method":"POST","http.target":"/v1/messages","http.status_code":200,"proxy.latency_ms":42},"Resource":{"service.name":"claude-code-ollama-proxy","service.version":"0.1.0"}}
+```
+
+```bash
+# Development: full bodies
+claude-code-ollama-proxy --log-level debug
+
+# Production minimum: errors only
+claude-code-ollama-proxy --log-level error
+
+# Pretty-print with jq
+claude-code-ollama-proxy | jq -r '"[\(.SeverityText)] \(.Body)"'
+```
+
+See [docs/LOGGING.md](docs/LOGGING.md) for the full reference including otelcol integration.
+
 ## Documentation
 
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [CLI Reference](docs/CLI.md)
 - [API Endpoints](docs/API.md)
+- [Logging Reference](docs/LOGGING.md)
 - [Streaming Architecture](docs/STREAMING.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [AI Agent Onboarding](AGENTS.md)
@@ -201,7 +225,7 @@ npm install
 # Run in development mode (with hot reload via tsx)
 npm run dev
 
-# Run tests (130 tests)
+# Run tests (166 tests)
 npm test
 
 # Build for production

@@ -11,6 +11,7 @@ import {
   mergeConfig,
   writeDefaultConfigFile,
 } from "./config.js";
+import { parseLogLevel } from "./logger.js";
 import type { ModelMap, ProxyConfig } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,7 +96,12 @@ program
     "Reject thinking requests for non-thinking models with HTTP 400 (default: silently strip thinking field)",
     false,
   )
-  .option("-v, --verbose", "Enable verbose request/response logging", false)
+  .option(
+    "--log-level <level>",
+    "Log level: error | warn | info | debug (default: info, or debug when --verbose is used)",
+    process.env.LOG_LEVEL ?? "",
+  )
+  .option("-v, --verbose", "Enable verbose request/response logging (equivalent to --log-level debug)", false)
   .action((options: {
     config?: string;
     init: boolean;
@@ -104,6 +110,7 @@ program
     modelMap: ModelMap;
     defaultModel: string;
     strictThinking: boolean;
+    logLevel: string;
     verbose: boolean;
   }) => {
     // ── --init: write default config file and exit ─────────────────────────
@@ -120,11 +127,35 @@ program
         modelMap: options.modelMap,
         strictThinking: options.strictThinking,
         verbose: options.verbose,
+        logLevel: options.logLevel || undefined,
       });
       console.log(`Created config file: ${dest}`);
       console.log("Edit it, then run: claude-code-ollama-proxy");
       process.exit(0);
     }
+
+    // ── Resolve effective log level ────────────────────────────────────────
+    // Only set an explicit level when the user has been intentional:
+    //   • --log-level flag (or LOG_LEVEL env var read as its default)
+    //   • --verbose shorthand
+    // When neither is given, leave logLevel undefined so that a value in
+    // proxy.config.json (merged below) can win, and server.ts will fall back
+    // to "info" if the file also has nothing.
+    let effectiveLogLevel: ProxyConfig["logLevel"];
+    if (options.logLevel) {
+      // options.logLevel is non-empty — may come from --log-level flag or
+      // from the LOG_LEVEL env var (used as the Commander default).
+      // parseLogLevel validates and throws on bad input.
+      try {
+        effectiveLogLevel = parseLogLevel(options.logLevel);
+      } catch (err) {
+        console.error(String(err));
+        process.exit(1);
+      }
+    } else if (options.verbose) {
+      effectiveLogLevel = "debug";
+    }
+    // else: undefined — mergeConfig will use the file's logLevel if present
 
     // ── Resolve config file ────────────────────────────────────────────────
     const configPath = options.config
@@ -144,6 +175,7 @@ program
       modelMap: options.modelMap,
       strictThinking: options.strictThinking,
       verbose: options.verbose,
+      logLevel: effectiveLogLevel,
     });
 
     const app = createServer(config);
@@ -157,7 +189,7 @@ program
       console.log(`  Forwarding to Ollama: ${config.ollamaUrl}`);
       console.log(`  Default model       : ${config.defaultModel}`);
       console.log(`  Strict thinking     : ${config.strictThinking}`);
-      console.log(`  Verbose logging     : ${config.verbose}`);
+      console.log(`  Log level           : ${config.logLevel ?? (config.verbose ? "debug" : "info")}`);
       if (configFilePath) {
         console.log(`  Config file         : ${configFilePath}`);
       }

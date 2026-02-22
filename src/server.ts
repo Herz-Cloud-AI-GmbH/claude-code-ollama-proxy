@@ -11,19 +11,47 @@ import { anthropicToOllama, generateMessageId, mapModel, ollamaToAnthropic } fro
 import { createStreamTransformer, parseOllamaNDJSON } from "./streaming.js";
 import { isThinkingCapable, needsThinkingValidation } from "./thinking.js";
 import { countRequestTokens } from "./token-counter.js";
+import { createLogger, generateRequestId, type Logger } from "./logger.js";
 import type { AnthropicError, AnthropicRequest, ProxyConfig } from "./types.js";
 
 export function createServer(config: ProxyConfig) {
+  // Derive effective log level: explicit > verbose flag > default
+  const effectiveLevel = config.logLevel ?? (config.verbose ? "debug" : "info");
+  const logger = createLogger({
+    level: effectiveLevel,
+    serviceName: "claude-code-ollama-proxy",
+    serviceVersion: "0.1.0",
+  });
+
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
 
-  if (config.verbose) {
-    app.use((req: Request, _res: Response, next: NextFunction) => {
-      console.log(`[proxy] ${req.method} ${req.path}`);
-      next();
+  // ─── Request / response logging middleware ──────────────────────────────
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestId = generateRequestId();
+    res.locals.requestId = requestId;
+    res.locals.startTime = Date.now();
+
+    logger.info("Request received", {
+      "http.method": req.method,
+      "http.target": req.path,
+      "proxy.request_id": requestId,
     });
-  }
+
+    res.on("finish", () => {
+      const latencyMs = Date.now() - (res.locals.startTime as number);
+      logger.info("Request completed", {
+        "http.method": req.method,
+        "http.target": req.path,
+        "http.status_code": res.statusCode,
+        "proxy.latency_ms": latencyMs,
+        "proxy.request_id": requestId,
+      });
+    });
+
+    next();
+  });
 
   // ─── Health check ──────────────────────────────────────────────────────────
   app.get("/health", (_req: Request, res: Response) => {
@@ -43,7 +71,7 @@ export function createServer(config: ProxyConfig) {
       }));
       res.json({ object: "list", data });
     } catch (err) {
-      handleError(err, res);
+      handleError(err, res, logger);
     }
   });
 
@@ -54,18 +82,20 @@ export function createServer(config: ProxyConfig) {
       const inputTokens = countRequestTokens(anthropicReq);
       res.json({ input_tokens: inputTokens });
     } catch (err) {
-      handleError(err, res);
+      handleError(err, res, logger);
     }
   });
 
   // ─── Messages (core proxy endpoint) ───────────────────────────────────────
   app.post("/v1/messages", async (req: Request, res: Response) => {
+    const requestId = res.locals.requestId as string;
     const rawReq = req.body as AnthropicRequest;
     let anthropicReq = rawReq;
 
-    if (config.verbose) {
-      console.log("[proxy] Anthropic request:", JSON.stringify(anthropicReq, null, 2));
-    }
+    logger.debug("Anthropic request body", {
+      "proxy.request_id": requestId,
+      "proxy.anthropic_request": anthropicReq,
+    });
 
     // ── Thinking validation ──
     // Claude Code (an AI agent) auto-generates thinking requests. Returning 400
@@ -89,11 +119,11 @@ export function createServer(config: ProxyConfig) {
           res.status(400).json(errorResponse);
           return;
         }
-        // Silent drop — strip thinking so the request proceeds normally.
-        console.warn(
-          `[proxy] ⚠ thinking request stripped for non-thinking model "${ollamaModel}" ` +
-          `(mapped from "${anthropicReq.model}"). Use --strict-thinking to reject with 400 instead.`,
-        );
+        logger.warn("Thinking field stripped for non-thinking model", {
+          "proxy.request_id": requestId,
+          "proxy.ollama_model": ollamaModel,
+          "proxy.requested_model": anthropicReq.model,
+        });
         anthropicReq = { ...anthropicReq, thinking: undefined };
       }
     }
@@ -104,24 +134,25 @@ export function createServer(config: ProxyConfig) {
       config.defaultModel,
     );
 
-    if (config.verbose) {
-      console.log("[proxy] Ollama request:", JSON.stringify(ollamaReq, null, 2));
-    }
+    logger.debug("Ollama request body", {
+      "proxy.request_id": requestId,
+      "proxy.ollama_request": ollamaReq,
+    });
 
     try {
       if (anthropicReq.stream) {
-        await handleStreaming(anthropicReq, ollamaReq, config, res);
+        await handleStreaming(anthropicReq, ollamaReq, config, logger, res, requestId);
       } else {
-        await handleNonStreaming(anthropicReq, ollamaReq, config, res);
+        await handleNonStreaming(anthropicReq, ollamaReq, config, logger, res, requestId);
       }
     } catch (err) {
-      handleError(err, res);
+      handleError(err, res, logger, requestId);
     }
   });
 
   // ─── Global error handler ──────────────────────────────────────────────────
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    handleError(err, res);
+    handleError(err, res, logger);
   });
 
   return app;
@@ -131,13 +162,16 @@ async function handleNonStreaming(
   anthropicReq: AnthropicRequest,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
   config: ProxyConfig,
+  logger: Logger,
   res: Response,
+  requestId: string,
 ) {
   const ollamaRes = await ollamaChat(config.ollamaUrl, ollamaReq);
 
-  if (config.verbose) {
-    console.log("[proxy] Ollama response:", JSON.stringify(ollamaRes, null, 2));
-  }
+  logger.debug("Ollama response body", {
+    "proxy.request_id": requestId,
+    "proxy.ollama_response": ollamaRes,
+  });
 
   const anthropicRes = ollamaToAnthropic(ollamaRes, anthropicReq.model);
   res.json(anthropicRes);
@@ -147,7 +181,9 @@ async function handleStreaming(
   anthropicReq: AnthropicRequest,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
   config: ProxyConfig,
+  logger: Logger,
   res: Response,
+  requestId: string,
 ) {
   const messageId = generateMessageId();
 
@@ -179,9 +215,10 @@ async function handleStreaming(
       buffer = remaining;
 
       for (const chunk of chunks) {
-        if (config.verbose) {
-          console.log("[proxy] Ollama chunk:", JSON.stringify(chunk));
-        }
+        logger.debug("Ollama stream chunk", {
+          "proxy.request_id": requestId,
+          "proxy.stream_chunk": chunk,
+        });
         const sseEvents = transform(chunk);
         for (const event of sseEvents) {
           res.write(event);
@@ -205,7 +242,7 @@ async function handleStreaming(
   }
 }
 
-function handleError(err: unknown, res: Response) {
+function handleError(err: unknown, res: Response, logger?: Logger, requestId?: string) {
   if (res.headersSent) {
     // For streaming, we can't send a proper error response
     res.end();
@@ -228,6 +265,13 @@ function handleError(err: unknown, res: Response) {
     message = err.message;
   }
 
+  logger?.error("Request error", {
+    "proxy.request_id": requestId,
+    "error.type": errorType,
+    "error.message": message,
+    "http.status_code": statusCode,
+  });
+
   const errorResponse: AnthropicError = {
     type: "error",
     error: { type: errorType, message },
@@ -235,3 +279,4 @@ function handleError(err: unknown, res: Response) {
 
   res.status(statusCode).json(errorResponse);
 }
+

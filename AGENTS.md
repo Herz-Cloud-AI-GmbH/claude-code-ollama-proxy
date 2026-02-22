@@ -26,6 +26,7 @@ used as drop-in replacements for Claude.
 | Build | tsup (ESM bundle, `dist/`) |
 | Tests | Vitest |
 | Package manager | npm |
+| Logging | OTEL-format NDJSON to stdout (`src/logger.ts`) |
 
 ---
 
@@ -42,6 +43,7 @@ used as drop-in replacements for Claude.
 │   ├── tool-healing.ts   # Tool call JSON argument repair
 │   ├── token-counter.ts  # Token counting algorithm
 │   ├── ollama-client.ts  # Typed Ollama HTTP client
+│   ├── logger.ts         # OTEL-format structured logger
 │   └── types.ts          # All TypeScript types
 ├── tests/
 │   ├── server.test.ts
@@ -49,15 +51,19 @@ used as drop-in replacements for Claude.
 │   ├── translator.test.ts
 │   ├── thinking.test.ts
 │   ├── tool-healing.test.ts
-│   └── token-counter.test.ts
+│   ├── token-counter.test.ts
+│   └── logger.test.ts
 ├── docs/
 │   ├── ARCHITECTURE.md   # Detailed architecture overview
 │   ├── API.md            # Endpoint reference
 │   ├── CLI.md            # CLI flag reference
+│   ├── LOGGING.md        # Logging reference + otelcol integration
 │   ├── STREAMING.md      # SSE streaming protocol docs
 │   ├── DEPLOYMENT.md     # Docker, systemd, Nginx guides
 │   ├── implementation-plan.md  # Design decisions for v2 features
+│   ├── logging-plan.md   # Logging implementation design
 │   └── tasks-and-tests-v2.md  # Task breakdown for v2 features
+├── .devcontainer/        # Dev container (Node 20 + otelcol + Claude Code)
 ├── dist/                 # Built output (gitignored)
 ├── package.json
 ├── tsconfig.json
@@ -87,6 +93,12 @@ node dist/cli.js --init
 
 # Run the proxy (after build)
 node dist/cli.js --port 3000 --default-model qwen3:8b
+
+# Run with debug logging (full bodies)
+node dist/cli.js --log-level debug
+
+# Run with minimal logging (errors only)
+node dist/cli.js --log-level error
 ```
 
 ---
@@ -101,6 +113,7 @@ node dist/cli.js --port 3000 --default-model qwen3:8b
 6. **Thinking is AI-agent-friendly by default**: Thinking requests for non-capable models are silently stripped (not rejected with 400) to keep Claude Code sessions alive. `strictThinking: true` enables rejection.
 7. **AI-agent-first config**: A `proxy.config.json` file is the primary config surface for AI agents. The proxy auto-discovers it in the working directory.
 8. **Empty default model map**: `DEFAULT_MODEL_MAP = {}`. All Claude model names fall through to `defaultModel` unless explicitly mapped. The recommended setup is `ANTHROPIC_MODEL=<ollama-model>` in Claude Code (bypasses the map entirely).
+9. **OTEL-first logging**: All operational log records are emitted as OTEL-compatible NDJSON to stdout. Log level is configurable (`--log-level error|warn|info|debug`). Bodies are only serialised at `debug` level to avoid prod performance impact.
 
 ---
 
@@ -209,7 +222,38 @@ Precedence: config file < environment variables < CLI flags.
 
 ---
 
-## Thinking Support Rules
+## Logging
+
+The proxy emits **OTEL-compatible NDJSON** log records to stdout. Every record follows the [OpenTelemetry LogRecord](https://opentelemetry.io/docs/specs/otel/logs/data-model/) data model.
+
+```json
+{"Timestamp":"…","SeverityNumber":9,"SeverityText":"INFO","Body":"Request received","Attributes":{"http.method":"POST","http.target":"/v1/messages","proxy.request_id":"req_a1b2c3d4"},"Resource":{"service.name":"claude-code-ollama-proxy","service.version":"0.1.0"}}
+```
+
+### Log levels
+
+| Level | Use case |
+|-------|---------|
+| `error` | Errors only (production minimum) |
+| `warn` | Errors + warnings (e.g., thinking stripped) |
+| `info` | + HTTP request in/out metadata — **default** |
+| `debug` | + full request/response bodies, per-chunk SSE |
+
+### Configure
+
+```bash
+node dist/cli.js --log-level debug   # full bodies (dev)
+node dist/cli.js --log-level error   # errors only (prod)
+LOG_LEVEL=info node dist/cli.js      # via env var
+```
+
+Config file: `{ "logLevel": "info" }`.
+
+See [docs/LOGGING.md](docs/LOGGING.md) for the full reference and otelcol integration guide.
+
+---
+
+
 
 - When `thinking` is present in a request:
   - If the mapped Ollama model starts with a thinking-capable prefix → set `think: true` in Ollama request
@@ -267,6 +311,7 @@ any → (done)      (final chunk: close current block → message_delta → mess
 - Import from source: `../src/<module>.js` (use `.js` extension for ESM compatibility)
 - Test style: `describe/it` blocks with `expect`
 - Mock Ollama: `tests/server.test.ts` creates an in-process mock HTTP server
+- Logger: spy on `process.stdout.write` to capture OTEL records in unit tests
 - No external services required for unit tests
 
 ---
@@ -276,11 +321,12 @@ any → (done)      (final chunk: close current block → message_delta → mess
 1. Update `src/types.ts` if new API fields are needed
 2. Add the implementation module in `src/`
 3. Wire it into `src/server.ts` and/or `src/translator.ts`
-4. Write tests in `tests/`
-5. Run `npm test` — all 131+ tests must pass
-6. Run `npm run build` — must succeed with zero errors
-7. Update relevant docs in `docs/`
-8. Update `AGENTS.md` if the architecture changes
+4. Add structured logging to new code paths using the `logger` instance in `createServer()`
+5. Write tests in `tests/`
+6. Run `npm test` — all 166+ tests must pass
+7. Run `npm run build` — must succeed with zero errors
+8. Update relevant docs in `docs/`
+9. Update `AGENTS.md` if the architecture changes
 
 ---
 
@@ -305,3 +351,4 @@ any → (done)      (final chunk: close current block → message_delta → mess
 | Ollama Thinking | https://docs.ollama.com/capabilities/thinking |
 | Ollama Tool Calling | https://docs.ollama.com/capabilities/tool-calling |
 | Ollama Thinking Models | https://ollama.com/search?c=thinking |
+| OTEL LogRecord Data Model | https://opentelemetry.io/docs/specs/otel/logs/data-model/ |

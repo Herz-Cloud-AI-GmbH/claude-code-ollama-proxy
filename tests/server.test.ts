@@ -94,6 +94,7 @@ const config: ProxyConfig = {
   defaultModel: "llama3.1",
   verbose: false,
   strictThinking: false,
+  logLevel: "error", // suppress info logs in test output
 };
 
 let httpServer: ReturnType<typeof import("node:http").createServer>;
@@ -435,6 +436,7 @@ describe("mergeConfig", () => {
     modelMap: {},
     strictThinking: false,
     verbose: false,
+    logLevel: "info" as const,
   };
 
   it("returns CLI defaults when file is null", () => {

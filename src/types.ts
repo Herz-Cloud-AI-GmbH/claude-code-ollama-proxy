@@ -11,6 +11,7 @@ export type LogLevel = "error" | "warn" | "info" | "debug";
 export type AnthropicContentBlockText = {
   type: "text";
   text: string;
+  cache_control?: { type: string };
 };
 
 export type AnthropicContentBlockThinking = {
@@ -57,7 +58,7 @@ export type AnthropicMessage = {
 export type AnthropicRequest = {
   model: string;
   messages: AnthropicMessage[];
-  system?: string;
+  system?: string | AnthropicContentBlock[];
   max_tokens?: number;
   stream?: boolean;
   temperature?: number;

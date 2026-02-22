@@ -182,9 +182,15 @@ export function anthropicToOllama(
 
   const messages: OllamaMessage[] = [];
 
-  // Prepend system message if present
+  // Prepend system message if present.
+  // Claude Code sends system as an array of text blocks (with optional
+  // cache_control) — flatten to a plain string for Ollama.
   if (req.system) {
-    messages.push({ role: "system", content: req.system });
+    const systemText =
+      typeof req.system === "string"
+        ? req.system
+        : extractMessageText(req.system);
+    messages.push({ role: "system", content: systemText });
   }
 
   // Convert Anthropic messages (may expand to multiple Ollama messages)

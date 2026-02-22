@@ -106,6 +106,27 @@ describe("anthropicToOllama", () => {
     expect(result.messages[1]).toEqual({ role: "user", content: "Hello" });
   });
 
+  it("flattens array system (with cache_control) to a plain string for Ollama", () => {
+    // Claude Code sends system as an array of text blocks with cache_control.
+    // Ollama requires content to be a string — sending an array causes a 400.
+    const req: AnthropicRequest = {
+      model: "claude-3-5-sonnet-20241022",
+      messages: [{ role: "user", content: "say hello" }],
+      system: [
+        {
+          type: "text",
+          text: "You are a helpful assistant.",
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    };
+    const result = anthropicToOllama(req, modelMap, defaultModel);
+    expect(result.messages[0]).toEqual({
+      role: "system",
+      content: "You are a helpful assistant.",
+    });
+  });
+
   it("does not add system message when system is absent", () => {
     const req: AnthropicRequest = {
       model: "claude-3-5-sonnet-20241022",

@@ -1,0 +1,111 @@
+{
+    "name": "claude-code-ollama-proxy",
+    // use dockerfile for build
+    "build": {
+      "dockerfile": "Dockerfile",
+      "context": "..",
+      // build-time environment vars
+      "args": {
+        "APP_FOLDER": "/workspaces/${localWorkspaceFolderBasename}",
+        "CLAUDE_CODE_VERSION": "latest",
+        "OTELCOL_VERSION": "0.144.0",
+        "ARCH": "arm64"
+      }
+    },
+    "remoteUser": "node",
+    // Enable host.docker.internal for accessing host services (e.g., Ollama)
+    "runArgs": [
+      "--add-host=host.docker.internal:host-gateway"
+    ],
+    // Add mounts
+    "mounts": [
+      "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/node/.ssh,type=bind,readonly"
+    ],
+    // Forward ports
+    "forwardPorts": [
+      3000,
+      4000
+    ],
+    // Port attributes to ensure proper forwarding
+    "portsAttributes": {
+      "3000": {
+        "label": "Next.js App",
+        "onAutoForward": "notify"
+      }
+    },
+    // Post-create setup instructions
+    "postCreateCommand": {
+      "addSafeRepository": "git config --global --add safe.directory /workspaces/${localWorkspaceFolderBasename}"
+    },
+    // customize the devcontainer
+    "customizations": {
+      "vscode": {
+        // add all required extensions
+        "extensions": [
+          // claude
+          "Anthropic.claude-code",
+          // makefile tools
+          "ms-vscode.makefile-tools",
+          // markdown diagrams (Mermaid)
+          "bierner.markdown-mermaid",
+          // node extensions
+          "dbaeumer.vscode-eslint",
+          "esbenp.prettier-vscode",
+          "christian-kohler.path-intellisense",
+          // yaml
+          "redhat.vscode-yaml",
+          // git
+          "mhutchie.git-graph",
+          // spell checker
+          "streetsidesoftware.code-spell-checker",
+          // docker
+          "ms-azuretools.vscode-docker",
+          "ms-azuretools.docker"
+        ],
+        "settings": {
+          "workbench.colorCustomizations": {
+            // title bar coloring
+            "titleBar.activeBackground": "#e16277",
+            "titleBar.activeForeground": "#000000",
+            "titleBar.inactiveBackground": "#e16277",
+            "titleBar.inactiveForeground": "#2c2c2c",
+            // left side bar coloring
+            "activityBar.activeBackground": "#af6d78",
+            "activityBar.background": "#e16277",
+            "activityBar.foreground": "#000000",
+            "activityBar.inactiveForeground": "#2c2c2c",
+            "activityBarBadge.background": "#eecb9d",
+            "activityBarBadge.foreground": "#15202b",
+            "commandCenter.border": "#15202b99",
+            "sash.hoverBorder": "#ecfbf5",
+            // footer coloring
+            "statusBar.background": "#e16277",
+            "statusBar.foreground": "#000000",
+            "statusBarItem.hoverBackground": "#e16277",
+            "statusBarItem.remoteBackground": "#e16277",
+            "statusBarItem.remoteForeground": "#000000"
+          },
+          // Editor Settings (consolidated)
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true,
+          "editor.quickSuggestions": {
+            "strings": true
+          },
+          // Prettier settings
+          "prettier.requireConfig": true,
+          "prettier.configPath": ".prettierrc",
+          // Formatter settings
+          "[typescript][typescriptreact][javascript][javascriptreact][json][css]": {
+            "editor.defaultFormatter": "esbenp.prettier-vscode"
+          },
+          // stop auto-forwarding ports
+          "remote.autoForwardPorts": false,
+          // Markdown preview: enable Mermaid diagram rendering
+          "markdown.mermaid.enabled": true,
+          // file settings
+          "files.trimTrailingWhitespace": true,
+          "files.insertFinalNewline": true
+        }
+      }
+    }
+  }

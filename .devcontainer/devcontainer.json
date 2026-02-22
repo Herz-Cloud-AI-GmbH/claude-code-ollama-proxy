@@ -29,7 +29,7 @@
     // Port attributes to ensure proper forwarding
     "portsAttributes": {
       "3000": {
-        "label": "Next.js App",
+        "label": "Proxy Port",
         "onAutoForward": "notify"
       }
     },

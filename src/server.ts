@@ -21,6 +21,7 @@ export function createServer(config: ProxyConfig) {
     level: effectiveLevel,
     serviceName: "claude-code-ollama-proxy",
     serviceVersion: "0.1.0",
+    logFile: config.logFile,
   });
 
   const app = express();

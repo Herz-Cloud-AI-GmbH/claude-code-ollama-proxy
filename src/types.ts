@@ -266,6 +266,12 @@ export type ProxyConfig = {
    * If absent, derived from `verbose`: true → "debug", false → "info".
    */
   logLevel?: LogLevel;
+  /**
+   * Optional path to a log file. When set, each NDJSON record is written to
+   * both stdout and this file. The file is truncated on proxy startup so every
+   * run starts with a clean log.
+   */
+  logFile?: string;
 };
 
 // ─── Anthropic Error Types ───────────────────────────────────────────────────

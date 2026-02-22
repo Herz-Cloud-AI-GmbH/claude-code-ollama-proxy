@@ -46,6 +46,11 @@ export type ProxyConfigFile = {
    * Overrides `verbose` when set. Defaults to "info" (or "debug" if verbose is true).
    */
   logLevel?: string;
+  /**
+   * Path to a log file. When set, NDJSON records are written to both stdout
+   * and this file. The file is truncated on each proxy startup.
+   */
+  logFile?: string;
 };
 
 /**
@@ -101,6 +106,7 @@ export function mergeConfig<
     strictThinking: boolean;
     verbose: boolean;
     logLevel?: string;
+    logFile?: string;
   },
 >(file: ProxyConfigFile | null, cli: T): T {
   if (!file) return cli;
@@ -129,5 +135,7 @@ export function mergeConfig<
         : file.logLevel !== undefined
           ? (file.logLevel as (typeof cli)["logLevel"])
           : cli.logLevel,
+    // CLI --log-file wins; fall back to config file value.
+    logFile: cli.logFile !== undefined ? cli.logFile : file.logFile,
   };
 }

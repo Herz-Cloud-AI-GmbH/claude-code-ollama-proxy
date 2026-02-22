@@ -5,6 +5,7 @@
 OLLAMA_URL      ?= http://host.docker.internal:11434
 DEFAULT_MODEL   ?= qwen3:8b
 PORT            ?= 3000
+LOG_FILE        ?= proxy.log
 
 install: ## Install dependencies (ignore-scripts hardening via .npmrc; rebuilds esbuild binary explicitly)
 	npm install
@@ -19,20 +20,23 @@ test: ## Run all Vitest test suites
 clean: ## Remove generated artefacts (dist/ and node_modules/)
 	rm -rf dist node_modules
 
-start: build ## Build and start the proxy (override: OLLAMA_URL, DEFAULT_MODEL, PORT)
+start: build ## Build and start the proxy (override: OLLAMA_URL, DEFAULT_MODEL, PORT, LOG_FILE)
 	node dist/cli.js \
 		--port $(PORT) \
 		--ollama-url $(OLLAMA_URL) \
-		--default-model $(DEFAULT_MODEL)
+		--default-model $(DEFAULT_MODEL) \
+		$(if $(LOG_FILE),--log-file $(LOG_FILE))
 
-dev: ## Start in development mode with hot-reload (no build step needed)
+dev: ## Start in development mode with hot-reload (override: OLLAMA_URL, DEFAULT_MODEL, PORT, LOG_FILE)
 	OLLAMA_URL=$(OLLAMA_URL) \
 	DEFAULT_MODEL=$(DEFAULT_MODEL) \
 	PORT=$(PORT) \
+	LOG_FILE=$(LOG_FILE) \
 	npm run dev -- \
 		--port $(PORT) \
 		--ollama-url $(OLLAMA_URL) \
-		--default-model $(DEFAULT_MODEL)
+		--default-model $(DEFAULT_MODEL) \
+		$(if $(LOG_FILE),--log-file $(LOG_FILE))
 
 # .claude/settings.json (committed, project scope) sets apiKeyHelper so Claude
 # Code uses a dummy key and skips its interactive login screen entirely.
@@ -54,6 +58,7 @@ help: ## Show this help message
 	@echo "  OLLAMA_URL    = $(OLLAMA_URL)"
 	@echo "  DEFAULT_MODEL = $(DEFAULT_MODEL)"
 	@echo "  PORT          = $(PORT)"
+	@echo "  LOG_FILE      = $(LOG_FILE)  (set to empty to disable: LOG_FILE=)"
 	@echo ""
 	@echo "Targets:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-10s %s\n", $$1, $$2}' $(MAKEFILE_LIST)

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { createWriteStream, type WriteStream } from "node:fs";
 import type { LogLevel } from "./types.js";
 
 // ─── OTEL Severity Numbers ────────────────────────────────────────────────────
@@ -34,6 +35,12 @@ export type LoggerConfig = {
   level: LogLevel;
   serviceName: string;
   serviceVersion: string;
+  /**
+   * Optional path to a log file. When set the file is truncated on open
+   * (flags: 'w') so every proxy restart starts with a clean log. Each
+   * NDJSON record is written to both stdout and the file.
+   */
+  logFile?: string;
 };
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
@@ -55,6 +62,7 @@ export type LoggerConfig = {
 export class Logger {
   private readonly levelNum: number;
   private readonly resource: Record<string, string>;
+  private readonly fileStream?: WriteStream;
 
   constructor(private readonly config: LoggerConfig) {
     this.levelNum = SEVERITY_NUMBERS[config.level];
@@ -62,6 +70,12 @@ export class Logger {
       "service.name": config.serviceName,
       "service.version": config.serviceVersion,
     };
+    if (config.logFile) {
+      this.fileStream = createWriteStream(config.logFile, { flags: "w" });
+      this.fileStream.on("error", (err) => {
+        process.stderr.write(`[logger] log file write error: ${err.message}\n`);
+      });
+    }
   }
 
   get level(): LogLevel {
@@ -82,7 +96,9 @@ export class Logger {
       Attributes: attributes,
       Resource: this.resource,
     };
-    process.stdout.write(JSON.stringify(record) + "\n");
+    const line = JSON.stringify(record) + "\n";
+    process.stdout.write(line);
+    this.fileStream?.write(line);
   }
 
   error(body: string, attributes: Record<string, unknown> = {}): void {

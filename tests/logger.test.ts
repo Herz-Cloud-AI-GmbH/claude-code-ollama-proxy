@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Logger, createLogger, parseLogLevel, generateRequestId } from "../src/logger.js";
 import type { OtelLogRecord } from "../src/logger.js";
 
@@ -235,5 +238,106 @@ describe("Logger class", () => {
   it("createLogger returns a Logger instance", () => {
     const logger = createLogger({ level: "info", serviceName: "s", serviceVersion: "0" });
     expect(logger).toBeInstanceOf(Logger);
+  });
+});
+
+// ─── Log file writing ─────────────────────────────────────────────────────────
+
+describe("Logger — logFile", () => {
+  let tmpDir: string;
+  let logPath: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "logger-test-"));
+    logPath = join(tmpDir, "test.log");
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function readLogRecords(): OtelLogRecord[] {
+    const raw = readFileSync(logPath, "utf-8");
+    return raw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as OtelLogRecord);
+  }
+
+  it("writes NDJSON records to the log file", async () => {
+    const logger = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+    });
+    logger.info("hello file");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    const records = readLogRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0].Body).toBe("hello file");
+    expect(records[0].SeverityText).toBe("INFO");
+  });
+
+  it("writes to both stdout and the file", async () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      written.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+    const logger = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+    });
+    logger.info("dual output");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    spy.mockRestore();
+
+    expect(written.some((l) => l.includes("dual output"))).toBe(true);
+    const records = readLogRecords();
+    expect(records.some((r) => r.Body === "dual output")).toBe(true);
+  });
+
+  it("truncates the file on construction (fresh start)", async () => {
+    const logger1 = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+    });
+    logger1.info("old entry");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    // Second logger with the same path — flags:'w' truncates on open
+    const logger2 = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+    });
+    logger2.info("new entry");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    const records = readLogRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0].Body).toBe("new entry");
+  });
+
+  it("respects the log level filter for file output", async () => {
+    const logger = createLogger({
+      level: "warn",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+    });
+    logger.debug("suppressed");
+    logger.info("also suppressed");
+    logger.warn("written");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    const records = readLogRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0].Body).toBe("written");
   });
 });

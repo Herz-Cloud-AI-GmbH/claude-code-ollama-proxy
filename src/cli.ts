@@ -102,6 +102,11 @@ program
     process.env.LOG_LEVEL ?? "",
   )
   .option("-v, --verbose", "Enable verbose request/response logging (equivalent to --log-level debug)", false)
+  .option(
+    "--log-file <path>",
+    "Write NDJSON log records to this file in addition to stdout. File is truncated on each start.",
+    process.env.LOG_FILE ?? "",
+  )
   .action((options: {
     config?: string;
     init: boolean;
@@ -112,6 +117,7 @@ program
     strictThinking: boolean;
     logLevel: string;
     verbose: boolean;
+    logFile: string;
   }) => {
     // ── --init: write default config file and exit ─────────────────────────
     if (options.init) {
@@ -176,60 +182,75 @@ program
       strictThinking: options.strictThinking,
       verbose: options.verbose,
       logLevel: effectiveLogLevel,
+      logFile: options.logFile || undefined,
     });
 
     const app = createServer(config);
 
     const server = app.listen(config.port, () => {
       const mapEntries = Object.entries(config.modelMap);
-      console.log("╔═══════════════════════════════════════════════╗");
-      console.log("║     claude-code-ollama-proxy                  ║");
-      console.log("╚═══════════════════════════════════════════════╝");
-      console.log(`  Proxy listening on  : http://localhost:${config.port}`);
-      console.log(`  Forwarding to Ollama: ${config.ollamaUrl}`);
-      console.log(`  Default model       : ${config.defaultModel}`);
-      console.log(`  Strict thinking     : ${config.strictThinking}`);
-      console.log(`  Log level           : ${config.logLevel ?? (config.verbose ? "debug" : "info")}`);
+      const effectiveLevel = config.logLevel ?? (config.verbose ? "debug" : "info");
+      const W = 54;
+      const bar  = "─".repeat(W);
+      const dbar = "═".repeat(W);
+
+      const pad = (s: string) => `  ${s}`;
+      const kv  = (key: string, val: string) =>
+        pad(`${key.padEnd(20)}  ${val}`);
+
+      console.log("");
+      console.log(`╔${dbar}╗`);
+      console.log(`║${"  claude-code-ollama-proxy".padEnd(W)}║`);
+      console.log(`╚${dbar}╝`);
+      console.log("");
+      console.log(kv("Listening",    `http://localhost:${config.port}`));
+      console.log(kv("Ollama",       config.ollamaUrl));
+      console.log(kv("Default model",config.defaultModel));
+      console.log(kv("Log level",    effectiveLevel));
+      if (config.logFile) {
+        console.log(kv("Log file",   config.logFile));
+      }
       if (configFilePath) {
-        console.log(`  Config file         : ${configFilePath}`);
+        console.log(kv("Config file", configFilePath));
       }
-      console.log("");
+
       if (mapEntries.length > 0) {
-        console.log("  Model map (Claude → Ollama):");
+        console.log("");
+        console.log(pad("Model map  (Claude → Ollama)"));
         for (const [k, v] of mapEntries) {
-          console.log(`    ${k.padEnd(40)} → ${v}`);
+          console.log(pad(`  ${k.padEnd(38)} →  ${v}`));
         }
-        console.log("");
       }
-      console.log("  ── AI-agent-first setup (recommended) ─────────");
-      console.log("  Set ANTHROPIC_MODEL=<your-ollama-model> in Claude Code.");
-      console.log("  The proxy passes non-Claude model names through directly.");
+
       console.log("");
-      console.log("  ── Quick start ─────────────────────────────────");
-      console.log("  Option A — AI-agent-first (no model map needed):");
-      console.log(`    ANTHROPIC_API_KEY=any-value \\`);
-      console.log(`    ANTHROPIC_MODEL=<your-ollama-model> \\`);
-      console.log(`    ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`);
-      console.log("    claude");
+      console.log(pad(`─── Quick start ${"─".repeat(W - 15)}`));
+      console.log(pad(`ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`));
+      console.log(pad(`ANTHROPIC_MODEL=${config.defaultModel} \\`));
+      console.log(pad("claude"));
+
       console.log("");
-      console.log("  Option B — use proxy default model:");
-      console.log(`    ANTHROPIC_API_KEY=any-value \\`);
-      console.log(`    ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`);
-      console.log(`    claude  # proxy routes all Claude model names → ${config.defaultModel}`);
-      console.log("");
-      console.log("  ⚠  Extended Thinking:");
+      console.log(pad(`─── Extended Thinking ${"─".repeat(W - 21)}`));
       if (config.strictThinking) {
-        console.log("     strict mode — thinking requests for non-thinking models return HTTP 400.");
+        console.log(pad("Strict mode — non-thinking models return HTTP 400."));
       } else {
-        console.log("     thinking field is SILENTLY STRIPPED for non-thinking models.");
-        console.log("     Use --strict-thinking to get HTTP 400 instead.");
+        console.log(pad("thinking field is silently stripped for non-thinking models."));
+        console.log(pad("Capable prefixes: qwen3, deepseek-r1, magistral, nemotron, glm4, qwq"));
       }
-      console.log("     Thinking-capable Ollama model prefixes:");
-      console.log("       qwen3, deepseek-r1, magistral, nemotron, glm4, qwq");
+
+      console.log("");
+      console.log(pad(`─── Tips ${"─".repeat(W - 8)}`));
+      if (config.logFile) {
+        console.log(pad(`Logs → stdout  +  ${config.logFile}  (truncated each start)`));
+        console.log(pad(`  tail -f ${config.logFile} | jq -r '"[\\(.SeverityText)] \\(.Body)"'`));
+      } else {
+        console.log(pad("Logs → stdout only.  Add --log-file proxy.log to also write a file."));
+      }
       if (!configFilePath) {
-        console.log("");
-        console.log(`  Tip: run with --init to create a ${CONFIG_FILE_NAME} config file.`);
+        console.log(pad(`Run with --init to generate a ${CONFIG_FILE_NAME} config file.`));
       }
+
+      console.log("");
+      console.log(`  ${bar}`);
       console.log("");
     });
 

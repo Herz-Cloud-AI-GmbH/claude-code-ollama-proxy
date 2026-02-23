@@ -47,6 +47,7 @@ function parseModelMap(value: string, previous: ModelMap): ModelMap {
   return { ...previous, [key]: val };
 }
 
+const VERSION = loadVersion();
 const program = new Command();
 
 program
@@ -55,7 +56,7 @@ program
     "Proxy server that translates Anthropic Claude API requests to Ollama.\n" +
       "Allows Claude Code and other Anthropic-API clients to use local LLMs.",
   )
-  .version(loadVersion())
+  .version(VERSION)
   .option(
     "-c, --config <path>",
     `Path to a proxy config JSON file (default: ${CONFIG_FILE_NAME} in current dir if it exists)`,
@@ -196,67 +197,80 @@ program
     const server = app.listen(config.port, () => {
       const mapEntries = Object.entries(config.modelMap);
       const effectiveLevel = config.logLevel ?? (config.verbose ? "debug" : "info");
-      const W = 54;
-      const bar  = "─".repeat(W);
-      const dbar = "═".repeat(W);
 
-      const pad = (s: string) => `  ${s}`;
-      const kv  = (key: string, val: string) =>
-        pad(`${key.padEnd(20)}  ${val}`);
+      const c = {
+        reset:  "\x1b[0m",
+        dim:    "\x1b[2m",
+        yellow: "\x1b[33m",
+        bGreen: "\x1b[1;32m",
+        bCyan:  "\x1b[1;36m",
+        bBlue:  "\x1b[1;34m",
+        bWhite: "\x1b[1;37m",
+      };
 
+      const kv = (key: string, val: string) =>
+        `  ${c.dim}${key.padEnd(18)}${c.reset}  ${val}`;
+
+      const section = (title: string) =>
+        `\n  ${c.bCyan}${title}${c.reset}`;
+
+      const boxW = 53;
+      const titleLine = `claude-code-ollama-proxy   v${VERSION}`;
+      const subtitleLine = "Anthropic API  →  Ollama";
+
+      console.log(`
+${c.bCyan}    ┌${"─".repeat(boxW)}┐
+    │${" ".repeat(boxW)}│
+    │   ${c.bWhite}${titleLine}${c.bCyan}${" ".repeat(boxW - 3 - titleLine.length)}│
+    │   ${c.dim}${subtitleLine}${c.bCyan}${" ".repeat(boxW - 3 - subtitleLine.length)}│
+    │${" ".repeat(boxW)}│
+    └${"─".repeat(boxW)}┘${c.reset}
+`);
+
+      console.log(`${c.bGreen}  ▶ Server running on http://localhost:${config.port}${c.reset}`);
       console.log("");
-      console.log(`╔${dbar}╗`);
-      console.log(`║${"  claude-code-ollama-proxy".padEnd(W)}║`);
-      console.log(`╚${dbar}╝`);
-      console.log("");
-      console.log(kv("Listening",    `http://localhost:${config.port}`));
-      console.log(kv("Ollama",       config.ollamaUrl));
-      console.log(kv("Default model",config.defaultModel));
-      console.log(kv("Log level",    effectiveLevel));
+      console.log(kv("Ollama", config.ollamaUrl));
+      console.log(kv("Default model", `${c.bWhite}${config.defaultModel}${c.reset}`));
+      console.log(kv("Log level", effectiveLevel));
+      console.log(kv("Sequential tools", config.sequentialToolCalls ? "on" : "off"));
       if (config.logFile) {
-        console.log(kv("Log file",   config.logFile));
+        console.log(kv("Log file", config.logFile));
       }
       if (configFilePath) {
         console.log(kv("Config file", configFilePath));
       }
 
       if (mapEntries.length > 0) {
-        console.log("");
-        console.log(pad("Model map  (Claude → Ollama)"));
+        console.log(section("Model Map"));
         for (const [k, v] of mapEntries) {
-          console.log(pad(`  ${k.padEnd(38)} →  ${v}`));
+          console.log(`  ${c.dim}  ${k.padEnd(36)}${c.reset} ${c.yellow}→${c.reset}  ${v}`);
         }
       }
 
-      console.log("");
-      console.log(pad(`─── Quick start ${"─".repeat(W - 15)}`));
-      console.log(pad(`ANTHROPIC_BASE_URL=http://localhost:${config.port} \\`));
-      console.log(pad(`ANTHROPIC_MODEL=${config.defaultModel} \\`));
-      console.log(pad("claude"));
+      console.log(section("Quick Start"));
+      console.log(`${c.bBlue}  ANTHROPIC_BASE_URL=http://localhost:${config.port} \\${c.reset}`);
+      console.log(`${c.bBlue}  ANTHROPIC_MODEL=${config.defaultModel} \\${c.reset}`);
+      console.log(`${c.bBlue}  claude${c.reset}`);
 
-      console.log("");
-      console.log(pad(`─── Extended Thinking ${"─".repeat(W - 21)}`));
+      console.log(section("Thinking"));
       if (config.strictThinking) {
-        console.log(pad("Strict mode — non-thinking models return HTTP 400."));
+        console.log(`  ${c.yellow}Strict mode${c.reset} — non-thinking models return HTTP 400`);
       } else {
-        console.log(pad("thinking field is silently stripped for non-thinking models."));
-        console.log(pad("Capable prefixes: qwen3, deepseek-r1, magistral, nemotron, glm4, qwq"));
+        console.log(`  ${c.dim}Silently stripped for non-thinking models${c.reset}`);
+        console.log(`  ${c.dim}Capable:${c.reset} qwen3, deepseek-r1, magistral, nemotron, glm4, qwq`);
       }
 
-      console.log("");
-      console.log(pad(`─── Tips ${"─".repeat(W - 8)}`));
+      console.log(section("Tips"));
       if (config.logFile) {
-        console.log(pad(`Logs → stdout  +  ${config.logFile}  (truncated each start)`));
-        console.log(pad(`  tail -f ${config.logFile} | jq -r '"[\\(.SeverityText)] \\(.Body)"'`));
+        console.log(`  ${c.dim}Logs →${c.reset} stdout + ${config.logFile} ${c.dim}(truncated each start)${c.reset}`);
+        console.log(`  ${c.bBlue}tail -f ${config.logFile} | jq -r '"[\\(.SeverityText)] \\(.Body)"'${c.reset}`);
       } else {
-        console.log(pad("Logs → stdout only.  Add --log-file proxy.log to also write a file."));
+        console.log(`  ${c.dim}Logs → stdout only.${c.reset} Add ${c.bBlue}--log-file proxy.log${c.reset} to write a file`);
       }
       if (!configFilePath) {
-        console.log(pad(`Run with --init to generate a ${CONFIG_FILE_NAME} config file.`));
+        console.log(`  ${c.dim}Run${c.reset} ${c.bBlue}--init${c.reset} ${c.dim}to generate a ${CONFIG_FILE_NAME}${c.reset}`);
       }
-
-      console.log("");
-      console.log(`  ${bar}`);
+      console.log(`  ${c.dim}Docs:${c.reset} ${c.bBlue}https://github.com/HerzCloudAI/claude-code-ollama-proxy${c.reset}`);
       console.log("");
     });
 

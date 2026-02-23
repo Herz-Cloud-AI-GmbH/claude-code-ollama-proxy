@@ -127,6 +127,74 @@ export function anthropicToolsToOllama(
 }
 
 /**
+ * Rewrite parallel tool-call patterns into sequential assistant/user pairs.
+ *
+ * Small local models struggle when an assistant message contains multiple
+ * tool_use blocks followed by a user message with multiple tool_result blocks.
+ * This function expands each such pair into N sequential rounds so the model
+ * sees one tool call and one result at a time.
+ *
+ * Only rewrites when an assistant message has 2+ tool_use blocks AND the
+ * immediately following user message carries matching tool_result blocks.
+ * Text/thinking blocks from the original assistant message are preserved on
+ * the first expanded assistant message.
+ */
+export function sequentializeToolCalls(
+  messages: AnthropicMessage[],
+): AnthropicMessage[] {
+  const result: AnthropicMessage[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    if (msg.role !== "assistant" || typeof msg.content === "string") {
+      result.push(msg);
+      continue;
+    }
+
+    const toolUseBlocks = msg.content.filter(
+      (b): b is AnthropicContentBlockToolUse => b.type === "tool_use",
+    );
+
+    if (toolUseBlocks.length < 2) {
+      result.push(msg);
+      continue;
+    }
+
+    const nextMsg = messages[i + 1];
+    if (!nextMsg || nextMsg.role !== "user" || typeof nextMsg.content === "string") {
+      result.push(msg);
+      continue;
+    }
+
+    const resultById = new Map(
+      nextMsg.content
+        .filter((b): b is AnthropicContentBlockToolResult => b.type === "tool_result")
+        .map((b) => [b.tool_use_id, b]),
+    );
+
+    const nonToolBlocks = msg.content.filter((b) => b.type !== "tool_use");
+
+    for (let j = 0; j < toolUseBlocks.length; j++) {
+      const toolUse = toolUseBlocks[j];
+      const assistantContent: AnthropicContentBlock[] =
+        j === 0 ? [...nonToolBlocks, toolUse] : [toolUse];
+
+      result.push({ role: "assistant", content: assistantContent });
+
+      const matchedResult = resultById.get(toolUse.id);
+      if (matchedResult) {
+        result.push({ role: "user", content: [matchedResult] });
+      }
+    }
+
+    i++; // skip the consumed user message
+  }
+
+  return result;
+}
+
+/**
  * Convert an Anthropic message (potentially containing tool_use or tool_result
  * blocks) into one or more Ollama messages.
  */
@@ -179,14 +247,12 @@ export function anthropicToOllama(
   req: AnthropicRequest,
   modelMap: ModelMap,
   defaultModel: string,
+  sequentialToolCalls = true,
 ): OllamaRequest {
   const ollamaModel = mapModel(req.model, modelMap, defaultModel);
 
   const messages: OllamaMessage[] = [];
 
-  // Prepend system message if present.
-  // Claude Code sends system as an array of text blocks (with optional
-  // cache_control) — flatten to a plain string for Ollama.
   if (req.system) {
     const systemText =
       typeof req.system === "string"
@@ -195,8 +261,12 @@ export function anthropicToOllama(
     messages.push({ role: "system", content: systemText });
   }
 
+  const effectiveMessages = sequentialToolCalls
+    ? sequentializeToolCalls(req.messages)
+    : req.messages;
+
   // Convert Anthropic messages (may expand to multiple Ollama messages)
-  for (const msg of req.messages) {
+  for (const msg of effectiveMessages) {
     messages.push(...anthropicMessageToOllamaMessages(msg));
   }
 

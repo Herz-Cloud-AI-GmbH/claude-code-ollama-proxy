@@ -133,6 +133,7 @@ export function createServer(config: ProxyConfig) {
       anthropicReq,
       config.modelMap,
       config.defaultModel,
+      config.sequentialToolCalls,
     );
 
     logger.debug("Ollama request body", {

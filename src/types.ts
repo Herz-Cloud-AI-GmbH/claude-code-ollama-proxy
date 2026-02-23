@@ -272,6 +272,14 @@ export type ProxyConfig = {
    * run starts with a clean log.
    */
   logFile?: string;
+  /**
+   * When true (default), parallel tool-call patterns in the conversation
+   * history are rewritten into sequential assistant/user pairs before
+   * forwarding to Ollama.  This helps smaller models that struggle with
+   * multiple tool_use + tool_result blocks in a single turn.
+   * Use --no-sequential-tools to disable.
+   */
+  sequentialToolCalls: boolean;
 };
 
 // ─── Anthropic Error Types ───────────────────────────────────────────────────

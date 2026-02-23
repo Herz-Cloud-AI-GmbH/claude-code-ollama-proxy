@@ -135,6 +135,30 @@ Can also be set in the config file:
 
 ---
 
+### `--no-sequential-tools`
+
+**Default:** sequential rewriting is **enabled**
+
+By default the proxy rewrites parallel tool-call patterns in the conversation
+history into sequential assistant/user pairs before forwarding to Ollama.
+This prevents smaller models (e.g. qwen3:8b) from hallucinating "sibling tool
+call errored" instead of processing tool results.
+
+Pass `--no-sequential-tools` to disable the rewrite if your model handles
+parallel tool calls correctly:
+
+```bash
+claude-code-ollama-proxy --no-sequential-tools
+```
+
+Can also be set in the config file:
+
+```json
+{ "sequentialToolCalls": false }
+```
+
+---
+
 ### `-v, --verbose`
 
 **Default:** `false`  
@@ -212,6 +236,7 @@ Running `--init` creates a `proxy.config.json` with all settings documented:
     "claude-haiku-4-5":  "qwen3:1.7b"
   },
   "strictThinking": false,
+  "sequentialToolCalls": true,
   "logLevel": "info"
 }
 ```

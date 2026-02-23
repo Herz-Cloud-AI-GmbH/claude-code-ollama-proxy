@@ -66,6 +66,15 @@ The request body is identical to the
 When `stream: true`, the response uses `Content-Type: text/event-stream` and
 follows the [Anthropic SSE streaming format](STREAMING.md).
 
+### Tool Call Sequentialization
+
+When the conversation history contains parallel tool calls (an assistant message
+with multiple `tool_use` blocks followed by a user message with matching
+`tool_result` blocks), the proxy rewrites them into sequential rounds before
+forwarding to Ollama. This is enabled by default and helps smaller models that
+otherwise hallucinate errors. Disable with `--no-sequential-tools` or
+`"sequentialToolCalls": false` in the config file.
+
 ### Model Translation
 
 The `model` field in the request is mapped to an Ollama model name using the

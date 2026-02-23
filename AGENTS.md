@@ -12,6 +12,7 @@ TypeScript/Node.js HTTP proxy. Translates Anthropic Messages API → Ollama chat
 | SSE streaming pipeline | `src/streaming.ts`, `docs/STREAMING.md` |
 | Thinking model detection | `src/thinking.ts` |
 | Tool call healing | `src/tool-healing.ts` |
+| Parallel → sequential tool rewrite | `src/translator.ts` (`sequentializeToolCalls`) |
 | Token counting | `src/token-counter.ts` |
 | HTTP routes and middleware | `src/server.ts` |
 | CLI flags and config loading | `src/cli.ts`, `docs/CLI.md` |
@@ -54,6 +55,7 @@ node dist/cli.js --init   # write proxy.config.json and exit
 5. SSE: call `res.flushHeaders()` before streaming; Ollama sends `eval_count` only in the final `done: true` chunk.
 6. All local imports use `.js` extension (TypeScript ESM convention).
 7. `DEFAULT_MODEL_MAP = {}` — all Claude model names fall through to `defaultModel` unless explicitly mapped.
+8. Parallel tool calls in conversation history are rewritten into sequential rounds by default (`sequentialToolCalls: true`) so smaller models don't hallucinate "sibling tool call" errors. Disable with `--no-sequential-tools`.
 
 ---
 

@@ -8,8 +8,9 @@ import {
   mapModel,
   mapStopReason,
   ollamaToAnthropic,
+  sequentializeToolCalls,
 } from "../src/translator.js";
-import type { AnthropicRequest, OllamaResponse } from "../src/types.js";
+import type { AnthropicMessage, AnthropicRequest, OllamaResponse } from "../src/types.js";
 
 describe("generateMessageId", () => {
   it("generates an ID with the msg_ prefix", () => {
@@ -281,5 +282,276 @@ describe("anthropicToolsToOllama", () => {
     expect(result[0].function.name).toBe("bash");
     expect(result[0].function.description).toBe("Run bash commands");
     expect(result[0].function.parameters).toEqual(tools[0].input_schema);
+  });
+});
+
+describe("sequentializeToolCalls", () => {
+  it("expands parallel tool calls into sequential assistant/user pairs", () => {
+    const messages: AnthropicMessage[] = [
+      { role: "user", content: "read two files" },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "A", name: "Read", input: { path: "README.md" } },
+          { type: "tool_use", id: "B", name: "Read", input: { path: "HOWTO.md" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "A", content: "readme contents" },
+          { type: "tool_result", tool_use_id: "B", content: "howto contents" },
+        ],
+      },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+
+    expect(result).toHaveLength(5);
+    expect(result[0]).toEqual({ role: "user", content: "read two files" });
+
+    // First pair
+    expect(result[1].role).toBe("assistant");
+    expect(result[1].content).toEqual([
+      { type: "tool_use", id: "A", name: "Read", input: { path: "README.md" } },
+    ]);
+    expect(result[2].role).toBe("user");
+    expect(result[2].content).toEqual([
+      { type: "tool_result", tool_use_id: "A", content: "readme contents" },
+    ]);
+
+    // Second pair
+    expect(result[3].role).toBe("assistant");
+    expect(result[3].content).toEqual([
+      { type: "tool_use", id: "B", name: "Read", input: { path: "HOWTO.md" } },
+    ]);
+    expect(result[4].role).toBe("user");
+    expect(result[4].content).toEqual([
+      { type: "tool_result", tool_use_id: "B", content: "howto contents" },
+    ]);
+  });
+
+  it("preserves text/thinking blocks on the first expanded assistant message", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "I should read both files" },
+          { type: "text", text: "Let me read those." },
+          { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+          { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "A", content: "aaa" },
+          { type: "tool_result", tool_use_id: "B", content: "bbb" },
+        ],
+      },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+
+    expect(result).toHaveLength(4);
+
+    // First assistant message gets the text + thinking blocks
+    expect(result[0].role).toBe("assistant");
+    expect(result[0].content).toEqual([
+      { type: "thinking", thinking: "I should read both files" },
+      { type: "text", text: "Let me read those." },
+      { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+    ]);
+
+    // Second assistant message only has the tool_use
+    expect(result[2].role).toBe("assistant");
+    expect(result[2].content).toEqual([
+      { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+    ]);
+  });
+
+  it("does not rewrite single tool_use messages", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "A", content: "aaa" },
+        ],
+      },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+    expect(result).toEqual(messages);
+  });
+
+  it("does not rewrite when next message is not a user tool_result", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+          { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+        ],
+      },
+      { role: "user", content: "thanks" },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+    expect(result).toEqual(messages);
+  });
+
+  it("passes through plain text messages unchanged", () => {
+    const messages: AnthropicMessage[] = [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi there" },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+    expect(result).toEqual(messages);
+  });
+
+  it("handles multiple consecutive parallel rounds independently", () => {
+    const messages: AnthropicMessage[] = [
+      // Round 1: parallel
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+          { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "A", content: "aaa" },
+          { type: "tool_result", tool_use_id: "B", content: "bbb" },
+        ],
+      },
+      // Round 2: parallel
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "C", name: "Write", input: { path: "c.txt" } },
+          { type: "tool_use", id: "D", name: "Write", input: { path: "d.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "C", content: "ccc" },
+          { type: "tool_result", tool_use_id: "D", content: "ddd" },
+        ],
+      },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+
+    // Each round expands from 2 messages to 4 messages
+    expect(result).toHaveLength(8);
+    expect(result[0].role).toBe("assistant");
+    expect(result[1].role).toBe("user");
+    expect(result[2].role).toBe("assistant");
+    expect(result[3].role).toBe("user");
+    expect(result[4].role).toBe("assistant");
+    expect(result[5].role).toBe("user");
+    expect(result[6].role).toBe("assistant");
+    expect(result[7].role).toBe("user");
+  });
+
+  it("handles three parallel tool calls", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+          { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+          { type: "tool_use", id: "C", name: "Read", input: { path: "c.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "A", content: "aaa" },
+          { type: "tool_result", tool_use_id: "B", content: "bbb" },
+          { type: "tool_result", tool_use_id: "C", content: "ccc" },
+        ],
+      },
+    ];
+
+    const result = sequentializeToolCalls(messages);
+    expect(result).toHaveLength(6);
+  });
+});
+
+describe("anthropicToOllama with sequentialToolCalls option", () => {
+  const modelMap = DEFAULT_MODEL_MAP;
+  const defaultModel = "llama3.1";
+
+  it("sequentializes parallel tool calls by default", () => {
+    const req: AnthropicRequest = {
+      model: "claude-3-5-sonnet-20241022",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+            { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "A", content: "aaa" },
+            { type: "tool_result", tool_use_id: "B", content: "bbb" },
+          ],
+        },
+      ],
+    };
+
+    const result = anthropicToOllama(req, modelMap, defaultModel);
+    // 4 Ollama messages: assistant+tool, assistant+tool (sequentialized)
+    expect(result.messages).toHaveLength(4);
+    expect(result.messages[0].role).toBe("assistant");
+    expect(result.messages[0].tool_calls).toHaveLength(1);
+    expect(result.messages[1].role).toBe("tool");
+    expect(result.messages[2].role).toBe("assistant");
+    expect(result.messages[2].tool_calls).toHaveLength(1);
+    expect(result.messages[3].role).toBe("tool");
+  });
+
+  it("preserves parallel tool calls when sequentialToolCalls is false", () => {
+    const req: AnthropicRequest = {
+      model: "claude-3-5-sonnet-20241022",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "A", name: "Read", input: { path: "a.txt" } },
+            { type: "tool_use", id: "B", name: "Read", input: { path: "b.txt" } },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "A", content: "aaa" },
+            { type: "tool_result", tool_use_id: "B", content: "bbb" },
+          ],
+        },
+      ],
+    };
+
+    const result = anthropicToOllama(req, modelMap, defaultModel, false);
+    // 3 Ollama messages: assistant (2 tool_calls), tool, tool
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[0].role).toBe("assistant");
+    expect(result.messages[0].tool_calls).toHaveLength(2);
+    expect(result.messages[1].role).toBe("tool");
+    expect(result.messages[2].role).toBe("tool");
   });
 });

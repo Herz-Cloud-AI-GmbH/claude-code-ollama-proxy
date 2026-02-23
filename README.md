@@ -12,7 +12,7 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 
 - **Zero cloud dependency** — all inference runs locally via Ollama; no Anthropic key needed
 - **Devcontainer-ready** — one `make start` / `make claude` gets you running inside a VS Code devcontainer
-- **Full Claude Code compatibility** — streaming SSE, tool calls (with JSON healing), extended thinking, token counting
+- **Full Claude Code compatibility** — streaming SSE, tool calls (with JSON healing and parallel→sequential rewriting), extended thinking, token counting
 - **Supply-chain hardened** — `ignore-scripts=true` in `.npmrc`; `npm rebuild esbuild` is the only explicit postinstall exception
 - **Structured logging** — OTEL-compatible NDJSON to stdout and optional log file; configurable level; integrates with otelcol
 - **Minimal and auditable** — ~2 k lines of TypeScript across 11 focused modules; no framework magic
@@ -84,6 +84,7 @@ Key translation features:
 - Automatic Claude → Ollama model name mapping (configurable)
 - Extended thinking support (`think: true`) for capable models — capable prefixes: `qwen3`, `deepseek-r1`, `magistral`, `nemotron`, `glm4`, `qwq`
 - Full tool call translation in both directions, with automatic JSON healing
+- Parallel tool calls rewritten to sequential rounds for smaller models (disable with `--no-sequential-tools`)
 - OTEL-compatible NDJSON structured logging
 
 ## Development

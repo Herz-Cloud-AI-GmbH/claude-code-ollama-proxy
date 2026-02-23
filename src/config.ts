@@ -51,6 +51,12 @@ export type ProxyConfigFile = {
    * and this file. The file is truncated on each proxy startup.
    */
   logFile?: string;
+  /**
+   * When true (default), parallel tool-call patterns in conversation history
+   * are rewritten into sequential rounds for Ollama.  Set to false if your
+   * model handles parallel tool calls well.
+   */
+  sequentialToolCalls?: boolean;
 };
 
 /**
@@ -107,6 +113,7 @@ export function mergeConfig<
     verbose: boolean;
     logLevel?: string;
     logFile?: string;
+    sequentialToolCalls: boolean;
   },
 >(file: ProxyConfigFile | null, cli: T): T {
   if (!file) return cli;
@@ -132,5 +139,7 @@ export function mergeConfig<
     logLevel: cli.logLevel ?? (file.logLevel as (typeof cli)["logLevel"]),
     // CLI --log-file wins; fall back to config file value.
     logFile: cli.logFile !== undefined ? cli.logFile : file.logFile,
+    sequentialToolCalls:
+      file.sequentialToolCalls !== undefined ? file.sequentialToolCalls : cli.sequentialToolCalls,
   };
 }

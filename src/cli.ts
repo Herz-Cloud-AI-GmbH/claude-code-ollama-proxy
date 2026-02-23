@@ -101,6 +101,10 @@ program
     "Log level: error | warn | info | debug (default: info, or debug when --verbose is used)",
     process.env.LOG_LEVEL ?? "",
   )
+  .option(
+    "--no-sequential-tools",
+    "Disable rewriting parallel tool calls into sequential rounds (enabled by default)",
+  )
   .option("-v, --verbose", "Enable verbose request/response logging (equivalent to --log-level debug)", false)
   .option(
     "--log-file <path>",
@@ -115,6 +119,7 @@ program
     modelMap: ModelMap;
     defaultModel: string;
     strictThinking: boolean;
+    sequentialTools: boolean;
     logLevel: string;
     verbose: boolean;
     logFile: string;
@@ -180,6 +185,7 @@ program
       defaultModel: options.defaultModel,
       modelMap: options.modelMap,
       strictThinking: options.strictThinking,
+      sequentialToolCalls: options.sequentialTools ?? true,
       verbose: options.verbose,
       logLevel: effectiveLogLevel,
       logFile: options.logFile || undefined,

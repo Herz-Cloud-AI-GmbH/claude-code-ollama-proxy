@@ -15,25 +15,27 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 - **Full Claude Code compatibility** — streaming SSE, tool calls (with JSON healing), extended thinking, token counting
 - **Supply-chain hardened** — `ignore-scripts=true` in `.npmrc`; `npm rebuild esbuild` is the only explicit postinstall exception
 - **Structured logging** — OTEL-compatible NDJSON to stdout and optional log file; configurable level; integrates with otelcol
-- **Minimal and auditable** — ~500 lines of TypeScript across focused modules; no framework magic
+- **Minimal and auditable** — ~2 k lines of TypeScript across 11 focused modules; no framework magic
 
 ## Alternatives and how they compare
 
 | | **this proxy** | [**ollama launch**](https://ollama.com/blog/launch) | [**claude-code-router**](https://github.com/musistudio/claude-code-router) |
 |---|---|---|---|
-| Setup | `make start` in devcontainer | `ollama launch claude` on host | `npm install -g` + config file |
+| Setup | `make start` in devcontainer | `ollama launch claude` on host (Ollama v0.15+) | `npm install -g` + config file |
 | Provider support | Ollama only | Ollama + cloud models | Ollama, OpenRouter, DeepSeek, Gemini, Vertex, and more |
 | Config complexity | Low — one flag or `proxy.config.json` | Zero — interactive model picker | High — JSON config with providers, transformers, routing rules |
-| Multi-model routing | No | No | Yes — route by task type (background, think, longContext, webSearch) |
-| Extended thinking | Yes | Depends on model | Yes (via transformers) |
+| Multi-model routing | Basic — `modelMap` maps Claude tier names to Ollama models | No | Yes — route by task type (background, think, longContext, webSearch) |
+| Extended thinking | Yes — thinking silently dropped for non-capable models (sessions never break) | Depends on model; non-capable models may return errors | Yes — route thinking requests to a capable backend |
+| Tool call JSON healing | Yes — auto-repairs escaped/double-escaped argument strings from models | No | No |
+| Local token counting | Yes — `POST /v1/messages/count_tokens` served locally, no Ollama round-trip | No | No |
 | Devcontainer support | First-class (`make` targets, `host.docker.internal`) | No | No |
 | Logging | OTEL-format NDJSON to stdout + file | None | pino to file |
-| Supply-chain hardening | Yes (`ignore-scripts`) | n/a (built into Ollama) | No |
+| Supply-chain hardening | Yes (`ignore-scripts`) | n/a (built into Ollama binary) | No |
 | Source | Run from source in repo | Built into Ollama binary | Published to npm |
 
-**Choose this proxy if** you work primarily in a devcontainer, want an auditable single-purpose tool, and only need Ollama as a backend.
+**Choose this proxy if** you work primarily in a devcontainer, want an auditable single-purpose tool with per-request logging, and only need Ollama as a backend.
 
-**Choose `ollama launch`** if you want the fastest possible zero-config setup on a host machine — it is now built into Ollama v0.15+ and requires no separate installation.
+**Choose `ollama launch`** if you want the fastest possible zero-config setup on a host machine with Ollama v0.15+ — no separate installation needed.
 
 **Choose claude-code-router** if you need to route different Claude Code tasks to different providers or models (e.g. a cheap local model for background tasks, a powerful cloud model for complex reasoning).
 
@@ -97,7 +99,7 @@ make dev       # hot-reload via tsx (no build step)
 
 | File | Contents |
 |---|---|
-| [HOWTO.md](HOWTO.md) | How to run, configure, and tune logging |
+| [HOWTO.md](HOWTO.md) | Quick start, Claude Code config, proxy options, Ollama tuning, logging |
 | [AGENTS.md](AGENTS.md) | AI agent onboarding — context map, commands, conventions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Request flow, module responsibilities |
 | [docs/API.md](docs/API.md) | Endpoint reference |

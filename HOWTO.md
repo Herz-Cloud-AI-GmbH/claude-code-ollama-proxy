@@ -1,55 +1,54 @@
 # HOWTO
 
-Step-by-step instructions for running, configuring, and tuning logging for the proxy.
+How to set up, configure, and run the claude-code-ollama-proxy.
 
 ---
 
-## 1. Start the proxy
+## 1. Quick Start
 
 ### Inside the devcontainer (recommended)
 
-Ollama runs on the **host machine**. The devcontainer reaches it via `host.docker.internal:11434`
-(wired up by `--add-host` in `.devcontainer/devcontainer.json`).
+**Prerequisites:**
+- [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- [Ollama](https://ollama.com) installed and running on your **host machine**
+- A model pulled into Ollama (e.g. `ollama pull qwen3:8b`)
 
-Two terminals are needed — one for the proxy, one for Claude Code.
+**Steps:**
 
-**Terminal 1 — build and start the proxy:**
+1. **Start Ollama on the host** (see [§4 Tune Ollama](#4-tune-ollama) for recommended settings):
+   ```bash
+   ollama serve   # Linux
+   open -a Ollama # macOS
+   ```
 
+2. **Pull a model** on the host:
+   ```bash
+   ollama pull qwen3:8b
+   ```
+
+3. **Open the repo in VS Code** and choose _"Reopen in Container"_ when prompted (or use the Command Palette: `Dev Containers: Reopen in Container`). The devcontainer builds once and then starts.
+
+4. **Terminal 1 — start the proxy** inside the devcontainer:
+   ```bash
+   make start
+   ```
+   The proxy listens on `http://localhost:3000` and connects to Ollama via `host.docker.internal:11434`.
+
+5. **Terminal 2 — launch Claude Code** inside the devcontainer:
+   ```bash
+   make claude
+   ```
+   Claude Code is now pointed at the proxy. Authentication is handled automatically via `.claude/settings.json` — no Anthropic account or API key needed.
+
+To use a different model or port:
 ```bash
-make start
-```
-
-Overridable variables (pass on the command line):
-
-| Variable | Default | Description |
-|---|---|---|
-| `DEFAULT_MODEL` | `qwen3:8b` | Ollama model to use |
-| `PORT` | `3000` | Proxy listen port |
-| `OLLAMA_URL` | `http://host.docker.internal:11434` | Ollama endpoint |
-| `LOG_FILE` | `proxy.log` | Log file path (`LOG_FILE=` to disable) |
-
-```bash
-make start DEFAULT_MODEL=llama3.2 PORT=3456
-```
-
-**Terminal 2 — launch Claude Code pointed at the proxy:**
-
-```bash
-make claude
-```
-
-`make claude` sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, and `ANTHROPIC_SMALL_FAST_MODEL`
-automatically. Authentication is handled by `.claude/settings.json` (`apiKeyHelper`) — no
-Anthropic account or API key is required.
-
-```bash
-make claude DEFAULT_MODEL=llama3.2 PORT=3456
+make start DEFAULT_MODEL=deepseek-r1:8b PORT=3456
+make claude DEFAULT_MODEL=deepseek-r1:8b PORT=3456
 ```
 
 Other useful targets:
-
 ```bash
-make help    # list all targets and current variable values
+make help    # list all targets with current variable values
 make dev     # hot-reload mode via tsx (no build step needed)
 make test    # run all Vitest tests
 make clean   # remove dist/ and node_modules/
@@ -57,102 +56,152 @@ make clean   # remove dist/ and node_modules/
 
 ---
 
-### Directly on the host
+### On the host (no devcontainer)
 
-Ollama and the proxy both run on the same machine — use `localhost` instead of
-`host.docker.internal`.
+Ollama and the proxy run on the same machine — use `localhost` everywhere.
 
-**Step 1 — build:**
+1. **Install dependencies and build:**
+   ```bash
+   npm install
+   npm run build
+   ```
 
-```bash
-npm install
-npm run build
-```
+2. **Start the proxy:**
+   ```bash
+   node dist/cli.js \
+     --port 3000 \
+     --ollama-url http://localhost:11434 \
+     --default-model qwen3:8b
+   ```
 
-**Step 2 — start the proxy:**
-
-```bash
-node dist/cli.js \
-  --port 3000 \
-  --ollama-url http://localhost:11434 \
-  --default-model qwen3:8b
-```
-
-**Step 3 — launch Claude Code:**
-
-```bash
-ANTHROPIC_BASE_URL=http://localhost:3000 \
-ANTHROPIC_MODEL=qwen3:8b \
-ANTHROPIC_SMALL_FAST_MODEL=qwen3:8b \
-ANTHROPIC_API_KEY=proxy-key \
-claude
-```
-
-> If `.claude/settings.json` is present (repo checked out on the host), `apiKeyHelper`
-> provides the key automatically and `ANTHROPIC_API_KEY` can be omitted.
+3. **Launch Claude Code** in a second terminal:
+   ```bash
+   ANTHROPIC_BASE_URL=http://localhost:3000 \
+   ANTHROPIC_MODEL=qwen3:8b \
+   ANTHROPIC_SMALL_FAST_MODEL=qwen3:8b \
+   ANTHROPIC_API_KEY=proxy-key \
+   claude
+   ```
+   > If `.claude/settings.json` is present in the repo, `apiKeyHelper` provides the key automatically and `ANTHROPIC_API_KEY` can be omitted.
 
 ---
 
-## 2. Write a config file
+## 2. Configure Claude Code
+
+Claude Code reads three environment variables to find the proxy:
+
+| Variable | Value | Description |
+|---|---|---|
+| `ANTHROPIC_BASE_URL` | `http://localhost:3000` | Points Claude Code at the proxy instead of Anthropic's cloud |
+| `ANTHROPIC_MODEL` | `qwen3:8b` (or any Ollama model name) | The model Claude Code requests for large tasks |
+| `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3:8b` (or any Ollama model name) | The model used for background/small tasks |
+| `ANTHROPIC_API_KEY` | `proxy-key` (any non-empty string) | Satisfies Claude Code's key requirement — the proxy ignores it |
+
+`make claude` sets all of these automatically using `DEFAULT_MODEL` and `PORT`.
+
+**Setting ANTHROPIC_MODEL directly** is the recommended AI-agent-first approach: the proxy passes any non-Claude model name straight through to Ollama without consulting `modelMap`. No mapping configuration is needed.
+
+---
+
+## 3. Proxy Configuration
+
+### Config file
 
 For persistent settings that survive restarts without repeating CLI flags.
 
 **Generate a default `proxy.config.json`:**
-
 ```bash
-node dist/cli.js --init
-# or via make:
 make build && node dist/cli.js --init
 ```
 
-**Edit it:**
-
+**Example `proxy.config.json`:**
 ```json
 {
+  "version": "1",
   "port": 3000,
   "ollamaUrl": "http://host.docker.internal:11434",
   "defaultModel": "qwen3:8b",
-  "modelMap": {
-    "claude-opus-4-5":   "qwen3:32b",
-    "claude-sonnet-4-5": "qwen3:8b",
-    "claude-haiku-4-5":  "qwen3:1.7b"
-  },
+  "modelMap": {},
   "strictThinking": false,
   "logLevel": "info",
   "logFile": "proxy.log"
 }
 ```
 
-The proxy auto-discovers `proxy.config.json` in the current working directory on startup.
-Pass `--config <path>` to point at a different file.
+The proxy auto-discovers `proxy.config.json` in the current working directory. Pass `--config <path>` to load a different file.
 
 **Config precedence** (later overrides earlier):
-
 ```
 proxy.config.json  <  environment variables  <  CLI flags
 ```
 
-All available fields:
+### All options
 
 | Field | CLI flag | Env var | Default | Description |
 |---|---|---|---|---|
 | `port` | `--port, -p` | `PORT` | `3000` | Listen port |
 | `ollamaUrl` | `--ollama-url, -u` | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
-| `defaultModel` | `--default-model, -d` | `DEFAULT_MODEL` | `llama3.1` | Fallback model |
-| `modelMap` | `--model-map, -m` | — | `{}` | Claude → Ollama name overrides |
-| `strictThinking` | `--strict-thinking` | — | `false` | Return 400 for thinking on non-capable models |
+| `defaultModel` | `--default-model, -d` | `DEFAULT_MODEL` | `llama3.1` | Fallback Ollama model |
+| `modelMap` | `--model-map, -m` | — | `{}` | Claude tier name → Ollama model overrides |
+| `strictThinking` | `--strict-thinking` | — | `false` | Return HTTP 400 for thinking on non-capable models (default: silently strip) |
 | `logLevel` | `--log-level` | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug` |
-| `logFile` | `--log-file` | `LOG_FILE` | _(none)_ | Log file path (truncated each start) |
-| `verbose` | `--verbose, -v` | — | `false` | Shorthand for `logLevel: debug` |
+| `logFile` | `--log-file` | `LOG_FILE` | _(none)_ | Log file path (truncated on each start) |
+| `verbose` | `--verbose, -v` | — | `false` | Shorthand for `--log-level debug` |
 
-**Model mapping** — the default map is empty; every Claude model name falls through to
-`defaultModel`. The simplest setup is to set `ANTHROPIC_MODEL=<ollama-model>` in Claude Code
-(via `make claude`). The proxy passes non-Claude model names directly to Ollama without
-consulting the map.
+### Model mapping
+
+The default `modelMap` is empty — every Claude model name falls through to `defaultModel`.
+
+Use `modelMap` only if you need different Ollama models per Claude tier:
+```json
+"modelMap": {
+  "claude-opus-4-5":   "qwen3:32b",
+  "claude-sonnet-4-5": "qwen3:8b",
+  "claude-haiku-4-5":  "qwen3:1.7b"
+}
+```
+
+Or pass it as a CLI flag:
+```bash
+node dist/cli.js --model-map claude-sonnet-4-5=qwen3:8b --model-map claude-haiku-4-5=qwen3:1.7b
+```
+
+### Extended thinking
+
+The proxy recognises these Ollama model prefixes as thinking-capable:
+`qwen3`, `deepseek-r1`, `magistral`, `nemotron`, `glm4`, `qwq`
+
+For all other models, thinking requests from Claude Code are **silently stripped** by default — the session continues without extended thinking. This prevents Claude Code (which auto-generates thinking requests) from breaking on non-thinking models.
+
+Set `--strict-thinking` (or `"strictThinking": true` in the config file) to get HTTP 400 instead, which is useful during development to catch model mis-configuration early.
 
 ---
 
-## 3. Configure logging
+## 4. Tune Ollama
+
+Ollama's default settings are conservative. For coding workloads with Claude Code, these environment variables improve throughput and quality:
+
+| Variable | Recommended | Description |
+|---|---|---|
+| `OLLAMA_CONTEXT_LENGTH` | `32768` or `65536` | Context window per request. Claude Code needs at least 32 k tokens for large files. |
+| `OLLAMA_NUM_PARALLEL` | `2` | Concurrent request slots. `2` covers the proxy + Claude Code's background tasks. |
+| `OLLAMA_MAX_QUEUE` | `64` | Queue depth before Ollama rejects new requests. |
+| `OLLAMA_KV_CACHE_TYPE` | `q8_0` | Quantised KV cache — saves VRAM with minimal quality loss. |
+| `OLLAMA_FLASH_ATTENTION` | `1` | Enable Flash Attention where supported (faster, lower VRAM). |
+| `OLLAMA_KEEP_ALIVE` | `5m` | Keep the model loaded for 5 minutes after the last request. |
+
+**Quick setup — copy the start script to your PATH and make it executable:**
+```bash
+cp scripts/ollama-start ~/bin/ollama-start
+chmod +x ~/bin/ollama-start
+ollama-start          # sets the vars above and launches Ollama
+```
+
+The script uses `open -a Ollama` on macOS. On Linux, replace that line with `ollama serve &`.
+
+---
+
+## 5. Logging
 
 ### Log level
 
@@ -160,10 +209,10 @@ Controls how much is written. Only records at or above the configured level are 
 
 | Level | What is logged |
 |---|---|
-| `error` | Errors only (minimum for production) |
-| `warn` | Errors + warnings (e.g. thinking stripped) |
-| `info` | + HTTP request/response metadata — **default** |
-| `debug` | + full request/response bodies, per-chunk SSE events |
+| `error` | Errors only — recommended for production |
+| `warn` | Errors + warnings (e.g. thinking stripped for a non-capable model) |
+| `info` | + HTTP request/response summary (method, path, status, latency) — **default** |
+| `debug` | + full request/response bodies and per-chunk SSE events |
 
 ```bash
 # via CLI flag
@@ -181,19 +230,12 @@ LOG_LEVEL=warn make start
 
 ### Log file
 
-By default the proxy writes to stdout only. Pass `--log-file <path>` (or set `LOG_FILE`) to
-also write to a file. The file is **truncated on every proxy start** so it always contains only
-the current session.
+By default the proxy writes to **stdout only**. Pass `--log-file <path>` (or set `LOG_FILE`) to also write to a file. The file is **truncated on every proxy start** so it always contains only the current session.
 
 ```bash
-# Makefile default: proxy.log in the project root
-make start                        # writes to stdout + proxy.log
-
-# Custom path
-make start LOG_FILE=/tmp/proxy.log
-
-# Disable file logging
-make start LOG_FILE=
+make start                        # stdout + proxy.log (Makefile default)
+make start LOG_FILE=/tmp/p.log    # custom path
+make start LOG_FILE=              # stdout only (disable file logging)
 ```
 
 ### Reading logs
@@ -201,14 +243,18 @@ make start LOG_FILE=
 Logs are OTEL-compatible NDJSON — one JSON object per line.
 
 ```bash
-# Follow the log file and pretty-print
+# Follow and pretty-print
 tail -f proxy.log | jq -r '"[\(.SeverityText)] \(.Body)"'
 
 # Show only errors
 tail -f proxy.log | jq 'select(.SeverityText == "ERROR")'
 
-# Show request/response pairs
+# Show HTTP request/response pairs
 tail -f proxy.log | jq 'select(.Attributes["http.target"] != null)'
+
+# Show thinking-stripped warnings
+tail -f proxy.log | jq 'select(.SeverityText == "WARN")'
 ```
 
-For otelcol integration see [docs/LOGGING.md](docs/LOGGING.md).
+For full otelcol integration (pipeline to Loki, Jaeger, etc.) see [docs/LOGGING.md](docs/LOGGING.md).
+

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type {
   AnthropicContentBlock,
+  AnthropicContentBlockToolResult,
   AnthropicContentBlockToolUse,
   AnthropicMessage,
   AnthropicRequest,
@@ -139,12 +140,13 @@ function anthropicMessageToOllamaMessages(msg: AnthropicMessage): OllamaMessage[
     (b): b is AnthropicContentBlockToolUse => b.type === "tool_use",
   );
   // Collect tool_result blocks (for user messages)
-  const toolResultBlocks = msg.content.filter((b) => b.type === "tool_result");
+  const toolResultBlocks = msg.content.filter(
+    (b): b is AnthropicContentBlockToolResult => b.type === "tool_result",
+  );
 
   if (msg.role === "user" && toolResultBlocks.length > 0) {
     // Each tool_result becomes a separate "tool" role message
     return toolResultBlocks.map((b) => {
-      if (b.type !== "tool_result") return { role: "tool" as const, content: "" };
       const content = typeof b.content === "string"
         ? b.content
         : extractMessageText(b.content);

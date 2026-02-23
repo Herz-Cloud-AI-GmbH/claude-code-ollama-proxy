@@ -129,12 +129,7 @@ export function mergeConfig<
     verbose: file.verbose !== undefined ? file.verbose || cli.verbose : cli.verbose,
     // CLI wins if explicitly set (--log-level flag or LOG_LEVEL env var folded in by Commander).
     // Otherwise fall back to the file's logLevel (may also be undefined → server.ts defaults).
-    logLevel:
-      cli.logLevel !== undefined
-        ? cli.logLevel
-        : file.logLevel !== undefined
-          ? (file.logLevel as (typeof cli)["logLevel"])
-          : cli.logLevel,
+    logLevel: cli.logLevel ?? (file.logLevel as (typeof cli)["logLevel"]),
     // CLI --log-file wins; fall back to config file value.
     logFile: cli.logFile !== undefined ? cli.logFile : file.logFile,
   };

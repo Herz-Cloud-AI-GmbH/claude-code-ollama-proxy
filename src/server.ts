@@ -142,9 +142,9 @@ export function createServer(config: ProxyConfig) {
 
     try {
       if (anthropicReq.stream) {
-        await handleStreaming(anthropicReq, ollamaReq, config, logger, res, requestId);
+        await handleStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId);
       } else {
-        await handleNonStreaming(anthropicReq, ollamaReq, config, logger, res, requestId);
+        await handleNonStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId);
       }
     } catch (err) {
       handleError(err, res, logger, requestId);
@@ -162,12 +162,12 @@ export function createServer(config: ProxyConfig) {
 async function handleNonStreaming(
   anthropicReq: AnthropicRequest,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
-  config: ProxyConfig,
+  ollamaUrl: string,
   logger: Logger,
   res: Response,
   requestId: string,
 ) {
-  const ollamaRes = await ollamaChat(config.ollamaUrl, ollamaReq);
+  const ollamaRes = await ollamaChat(ollamaUrl, ollamaReq);
 
   logger.debug("Ollama response body", {
     "proxy.request_id": requestId,
@@ -181,7 +181,7 @@ async function handleNonStreaming(
 async function handleStreaming(
   anthropicReq: AnthropicRequest,
   ollamaReq: ReturnType<typeof anthropicToOllama>,
-  config: ProxyConfig,
+  ollamaUrl: string,
   logger: Logger,
   res: Response,
   requestId: string,
@@ -195,7 +195,7 @@ async function handleStreaming(
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const ollamaResponse = await ollamaChatStream(config.ollamaUrl, ollamaReq);
+  const ollamaResponse = await ollamaChatStream(ollamaUrl, ollamaReq);
 
   if (!ollamaResponse.body) {
     throw new Error("Ollama returned no response body");

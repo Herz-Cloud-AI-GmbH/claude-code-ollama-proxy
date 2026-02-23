@@ -77,6 +77,19 @@ describe("countRequestTokens", () => {
     expect(countRequestTokens(req)).toBe(4);
   });
 
+  it("counts tokens from system as AnthropicContentBlock[] (Claude Code cache_control format)", () => {
+    // Claude Code sends system as an array of text blocks with cache_control.
+    const req: AnthropicRequest = {
+      model: "claude-3-5-sonnet-20241022",
+      messages: [],
+      system: [
+        { type: "text", text: "You are a bot", cache_control: { type: "ephemeral" } },
+      ],
+    };
+    // "You" (1) + "are" (1) + "a" (1) + "bot" (1) = 4
+    expect(countRequestTokens(req)).toBe(4);
+  });
+
   it("counts tokens from both system and messages", () => {
     const req: AnthropicRequest = {
       model: "claude-3-5-sonnet-20241022",

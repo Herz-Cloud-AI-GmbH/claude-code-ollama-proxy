@@ -56,7 +56,11 @@ export function countRequestTokens(req: AnthropicRequest): number {
   const parts: string[] = [];
 
   if (req.system) {
-    parts.push(req.system);
+    if (typeof req.system === "string") {
+      parts.push(req.system);
+    } else {
+      parts.push(extractTextFromBlocks(req.system));
+    }
   }
 
   for (const msg of req.messages) {

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# ollama-start — launch Ollama with settings tuned for coding workloads.
+# Copy to ~/bin/ollama-start (or any directory on $PATH) and chmod +x.
+
+export OLLAMA_NUM_PARALLEL=2       # handle up to 2 concurrent requests
+export OLLAMA_MAX_QUEUE=64         # queue depth before rejecting requests
+export OLLAMA_CONTEXT_LENGTH=8192  # default context window per request
+export OLLAMA_KV_CACHE_TYPE=q8_0   # quantised KV cache — saves VRAM, minimal quality loss
+export OLLAMA_FLASH_ATTENTION=1    # enable Flash Attention where supported
+export OLLAMA_KEEP_ALIVE=5m        # keep model loaded for 5 min after last request
+
+open -a Ollama

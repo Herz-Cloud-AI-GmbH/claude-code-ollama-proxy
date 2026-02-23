@@ -39,6 +39,38 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 
 ---
 
+## Ollama setup (host machine)
+
+Ollama must run on the host before starting the proxy. The script below applies
+a set of tuned environment variables for coding workloads and then launches the
+macOS app. Copy it to a directory on your `$PATH` (e.g. `~/bin/ollama-start`)
+and make it executable:
+
+```bash
+cp scripts/ollama-start ~/bin/ollama-start
+chmod +x ~/bin/ollama-start
+ollama-start
+```
+
+```bash
+#!/usr/bin/env bash
+# ollama-start — launch Ollama with settings tuned for coding workloads.
+# Copy to ~/bin/ollama-start (or any directory on $PATH) and chmod +x.
+
+export OLLAMA_NUM_PARALLEL=2       # handle up to 2 concurrent requests
+export OLLAMA_MAX_QUEUE=64         # queue depth before rejecting requests
+export OLLAMA_CONTEXT_LENGTH=8192  # default context window per request
+export OLLAMA_KV_CACHE_TYPE=q8_0   # quantised KV cache — saves VRAM, minimal quality loss
+export OLLAMA_FLASH_ATTENTION=1    # enable Flash Attention where supported
+export OLLAMA_KEEP_ALIVE=5m        # keep model loaded for 5 min after last request
+
+open -a Ollama
+```
+
+> `open -a Ollama` is macOS-specific. On Linux replace it with `ollama serve &`.
+
+---
+
 ## How it works
 
 The proxy listens on a local port, accepts Anthropic-format requests, translates them to Ollama's chat API, and returns Anthropic-format responses.

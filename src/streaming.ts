@@ -8,6 +8,7 @@ import type {
   MessageStopEvent,
   OllamaStreamChunk,
   PingEvent,
+  ToolSchemaInfo,
 } from "./types.js";
 import { mapStopReason, ollamaToolCallsToAnthropic } from "./translator.js";
 
@@ -71,6 +72,7 @@ export function createStreamTransformer(
   messageId: string,
   requestedModel: string,
   inputTokens: number,
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
 ): (chunk: OllamaStreamChunk) => string[] {
   let isFirst = true;
   let blockState: BlockState = "none";
@@ -87,7 +89,7 @@ export function createStreamTransformer(
       events.push(formatSSEEvent(contentBlockStart));
     } else if (state === "tool_use" && chunk?.message.tool_calls) {
       // Tool use blocks are emitted inline and closed immediately
-      const toolBlocks = ollamaToolCallsToAnthropic(chunk.message.tool_calls);
+      const { blocks: toolBlocks } = ollamaToolCallsToAnthropic(chunk.message.tool_calls, toolSchemaMap);
       for (const block of toolBlocks) {
         if (block.type !== "tool_use") continue;
         const startEvent: ContentBlockStartEvent = {

@@ -209,57 +209,57 @@ describe("ollamaToAnthropic", () => {
   };
 
   it("returns an Anthropic response with correct structure", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.type).toBe("message");
-    expect(result.role).toBe("assistant");
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.type).toBe("message");
+    expect(response.role).toBe("assistant");
   });
 
   it("extracts text content correctly", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.content).toEqual([{ type: "text", text: "Hello there!" }]);
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.content).toEqual([{ type: "text", text: "Hello there!" }]);
   });
 
   it("maps token counts to usage", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.usage.input_tokens).toBe(10);
-    expect(result.usage.output_tokens).toBe(5);
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.usage.input_tokens).toBe(10);
+    expect(response.usage.output_tokens).toBe(5);
   });
 
   it("maps stop_reason 'stop' → 'end_turn'", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.stop_reason).toBe("end_turn");
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.stop_reason).toBe("end_turn");
   });
 
   it("maps stop_reason 'length' → 'max_tokens'", () => {
     const res = { ...baseOllamaRes, done_reason: "length" };
-    const result = ollamaToAnthropic(res, "claude-3-5-sonnet-20241022");
-    expect(result.stop_reason).toBe("max_tokens");
+    const { response } = ollamaToAnthropic(res, "claude-3-5-sonnet-20241022");
+    expect(response.stop_reason).toBe("max_tokens");
   });
 
   it("uses provided message ID", () => {
-    const result = ollamaToAnthropic(
+    const { response } = ollamaToAnthropic(
       baseOllamaRes,
       "claude-3-5-sonnet-20241022",
       "msg_testid",
     );
-    expect(result.id).toBe("msg_testid");
+    expect(response.id).toBe("msg_testid");
   });
 
   it("generates a message ID when not provided", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.id).toMatch(/^msg_[0-9a-f]{16}$/);
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.id).toMatch(/^msg_[0-9a-f]{16}$/);
   });
 
   it("defaults token counts to 0 when not provided", () => {
     const res = { ...baseOllamaRes, eval_count: undefined, prompt_eval_count: undefined };
-    const result = ollamaToAnthropic(res, "claude-3-5-sonnet-20241022");
-    expect(result.usage.input_tokens).toBe(0);
-    expect(result.usage.output_tokens).toBe(0);
+    const { response } = ollamaToAnthropic(res, "claude-3-5-sonnet-20241022");
+    expect(response.usage.input_tokens).toBe(0);
+    expect(response.usage.output_tokens).toBe(0);
   });
 
   it("uses the requestedModel in the response, not Ollama's model name", () => {
-    const result = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
-    expect(result.model).toBe("claude-3-5-sonnet-20241022");
+    const { response } = ollamaToAnthropic(baseOllamaRes, "claude-3-5-sonnet-20241022");
+    expect(response.model).toBe("claude-3-5-sonnet-20241022");
   });
 });
 

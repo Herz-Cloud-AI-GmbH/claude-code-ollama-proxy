@@ -8,11 +8,12 @@ import {
   ollamaListModels,
 } from "./ollama-client.js";
 import { anthropicToOllama, generateMessageId, mapModel, ollamaToAnthropic } from "./translator.js";
+import { buildToolSchemaMap } from "./tool-healing.js";
 import { createStreamTransformer, parseOllamaNDJSON } from "./streaming.js";
 import { isThinkingCapable, needsThinkingValidation } from "./thinking.js";
 import { countRequestTokens } from "./token-counter.js";
 import { createLogger, generateRequestId, type Logger } from "./logger.js";
-import type { AnthropicError, AnthropicRequest, ProxyConfig } from "./types.js";
+import type { AnthropicError, AnthropicRequest, ProxyConfig, ToolSchemaInfo } from "./types.js";
 
 export function createServer(config: ProxyConfig) {
   // Derive effective log level: explicit > verbose flag > default
@@ -141,11 +142,15 @@ export function createServer(config: ProxyConfig) {
       "proxy.ollama_request": ollamaReq,
     });
 
+    const toolSchemaMap = anthropicReq.tools?.length
+      ? buildToolSchemaMap(anthropicReq.tools)
+      : undefined;
+
     try {
       if (anthropicReq.stream) {
-        await handleStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId);
+        await handleStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId, toolSchemaMap);
       } else {
-        await handleNonStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId);
+        await handleNonStreaming(anthropicReq, ollamaReq, config.ollamaUrl, logger, res, requestId, toolSchemaMap);
       }
     } catch (err) {
       handleError(err, res, logger, requestId);
@@ -167,6 +172,7 @@ async function handleNonStreaming(
   logger: Logger,
   res: Response,
   requestId: string,
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
 ) {
   const ollamaRes = await ollamaChat(ollamaUrl, ollamaReq);
 
@@ -175,7 +181,24 @@ async function handleNonStreaming(
     "proxy.ollama_response": ollamaRes,
   });
 
-  const anthropicRes = ollamaToAnthropic(ollamaRes, anthropicReq.model);
+  const { response: anthropicRes, renames, coercions } = ollamaToAnthropic(
+    ollamaRes, anthropicReq.model, undefined, toolSchemaMap,
+  );
+
+  if (renames.length > 0) {
+    logger.warn("Healed tool parameter names", {
+      "proxy.request_id": requestId,
+      "proxy.param_renames": renames,
+    });
+  }
+
+  if (coercions.length > 0) {
+    logger.warn("Healed tool parameter types", {
+      "proxy.request_id": requestId,
+      "proxy.param_coercions": coercions,
+    });
+  }
+
   res.json(anthropicRes);
 }
 
@@ -186,6 +209,7 @@ async function handleStreaming(
   logger: Logger,
   res: Response,
   requestId: string,
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
 ) {
   const messageId = generateMessageId();
 
@@ -202,7 +226,7 @@ async function handleStreaming(
     throw new Error("Ollama returned no response body");
   }
 
-  const transform = createStreamTransformer(messageId, anthropicReq.model, 0);
+  const transform = createStreamTransformer(messageId, anthropicReq.model, 0, toolSchemaMap);
   const reader = ollamaResponse.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

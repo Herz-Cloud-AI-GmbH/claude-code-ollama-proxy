@@ -208,70 +208,101 @@ program
         bWhite: "\x1b[1;37m",
       };
 
-      const kv = (key: string, val: string) =>
-        `  ${c.dim}${key.padEnd(18)}${c.reset}  ${val}`;
+      // ── Layout constants ──
+      const L = 40;  // left column inner width
+      const R = 42;  // right column inner width
+      const title = ` claude-code-ollama-proxy v${VERSION} `;
 
-      const section = (title: string) =>
-        `\n  ${c.bCyan}${title}${c.reset}`;
+      // ── Build left column lines ──
+      // Key on one line, value indented on the next line.
+      const kv = (key: string, val: string) => [
+        `${c.dim}${key}${c.reset}`,
+        `  ${val}`,
+      ];
 
-      const boxW = 53;
-      const titleLine = `claude-code-ollama-proxy   v${VERSION}`;
-      const subtitleLine = "Anthropic API  →  Ollama";
-
-      console.log(`
-${c.bCyan}    ┌${"─".repeat(boxW)}┐
-    │${" ".repeat(boxW)}│
-    │   ${c.bWhite}${titleLine}${c.bCyan}${" ".repeat(boxW - 3 - titleLine.length)}│
-    │   ${c.dim}${subtitleLine}${c.bCyan}${" ".repeat(boxW - 3 - subtitleLine.length)}│
-    │${" ".repeat(boxW)}│
-    └${"─".repeat(boxW)}┘${c.reset}
-`);
-
-      console.log(`${c.bGreen}  ▶ Server running on http://localhost:${config.port}${c.reset}`);
-      console.log("");
-      console.log(kv("Ollama", config.ollamaUrl));
-      console.log(kv("Default model", `${c.bWhite}${config.defaultModel}${c.reset}`));
-      console.log(kv("Log level", effectiveLevel));
-      console.log(kv("Sequential tools", config.sequentialToolCalls ? "on" : "off"));
+      const leftLines: string[] = [];
+      leftLines.push("");
+      leftLines.push(`${c.bGreen}▶ http://localhost:${config.port}${c.reset}`);
+      leftLines.push("");
+      leftLines.push(...kv("Ollama", config.ollamaUrl));
+      leftLines.push(...kv("Default model", `${c.bWhite}${config.defaultModel}${c.reset}`));
+      leftLines.push(...kv("Log level", effectiveLevel));
+      leftLines.push(...kv("Sequential tools", config.sequentialToolCalls ? "on" : "off"));
       if (config.logFile) {
-        console.log(kv("Log file", config.logFile));
+        leftLines.push(...kv("Log file", config.logFile));
       }
       if (configFilePath) {
-        console.log(kv("Config file", configFilePath));
+        leftLines.push(...kv("Config file", configFilePath));
       }
-
       if (mapEntries.length > 0) {
-        console.log(section("Model Map"));
+        leftLines.push("");
         for (const [k, v] of mapEntries) {
-          console.log(`  ${c.dim}  ${k.padEnd(36)}${c.reset} ${c.yellow}→${c.reset}  ${v}`);
+          leftLines.push(`${c.dim}${k}${c.reset} ${c.yellow}→${c.reset} ${v}`);
         }
       }
 
-      console.log(section("Quick Start"));
-      console.log(`${c.bBlue}  ANTHROPIC_BASE_URL=http://localhost:${config.port} \\${c.reset}`);
-      console.log(`${c.bBlue}  ANTHROPIC_MODEL=${config.defaultModel} \\${c.reset}`);
-      console.log(`${c.bBlue}  claude${c.reset}`);
-
-      console.log(section("Thinking"));
+      // ── Build right column lines ──
+      const rightLines: string[] = [];
+      rightLines.push(`${c.bCyan}Quick start${c.reset}`);
+      rightLines.push(`${c.bBlue}ANTHROPIC_BASE_URL=http://localhost:${config.port}${c.reset}`);
+      rightLines.push(`${c.bBlue}ANTHROPIC_MODEL=${config.defaultModel}${c.reset}`);
+      rightLines.push(`${c.bBlue}claude${c.reset}`);
+      rightLines.push(`${c.dim}${"─".repeat(R)}${c.reset}`);
       if (config.strictThinking) {
-        console.log(`  ${c.yellow}Strict mode${c.reset} — non-thinking models return HTTP 400`);
+        rightLines.push(`${c.bCyan}Thinking${c.reset}  ${c.yellow}strict${c.reset} ${c.dim}(400 on non-capable)${c.reset}`);
       } else {
-        console.log(`  ${c.dim}Silently stripped for non-thinking models${c.reset}`);
-        console.log(`  ${c.dim}Capable:${c.reset} qwen3, deepseek-r1, magistral, nemotron, glm4, qwq`);
+        rightLines.push(`${c.bCyan}Thinking${c.reset}  ${c.dim}silently stripped${c.reset}`);
       }
-
-      console.log(section("Tips"));
+      rightLines.push(`${c.dim}Capable: qwen3 deepseek-r1 magistral${c.reset}`);
+      rightLines.push(`${c.dim}         nemotron glm4 qwq${c.reset}`);
+      rightLines.push(`${c.dim}${"─".repeat(R)}${c.reset}`);
+      rightLines.push(`${c.bCyan}Tips${c.reset}`);
       if (config.logFile) {
-        console.log(`  ${c.dim}Logs →${c.reset} stdout + ${config.logFile} ${c.dim}(truncated each start)${c.reset}`);
-        console.log(`  ${c.bBlue}tail -f ${config.logFile} | jq -r '"[\\(.SeverityText)] \\(.Body)"'${c.reset}`);
+        rightLines.push(`${c.dim}Logs → stdout + ${config.logFile}${c.reset}`);
       } else {
-        console.log(`  ${c.dim}Logs → stdout only.${c.reset} Add ${c.bBlue}--log-file proxy.log${c.reset} to write a file`);
+        rightLines.push(`${c.dim}Add${c.reset} ${c.bBlue}--log-file proxy.log${c.reset} ${c.dim}for file logging${c.reset}`);
       }
       if (!configFilePath) {
-        console.log(`  ${c.dim}Run${c.reset} ${c.bBlue}--init${c.reset} ${c.dim}to generate a ${CONFIG_FILE_NAME}${c.reset}`);
+        rightLines.push(`${c.dim}Run${c.reset} ${c.bBlue}--init${c.reset} ${c.dim}to generate config${c.reset}`);
       }
-      console.log(`  ${c.dim}Docs:${c.reset} ${c.bBlue}https://github.com/HerzCloudAI/claude-code-ollama-proxy${c.reset}`);
-      console.log("");
+      rightLines.push(`${c.dim}Docs:${c.reset} ${c.bBlue}github.com/HerzCloudAI/…${c.reset}`);
+
+      // ── Equalise row count ──
+      const rows = Math.max(leftLines.length, rightLines.length);
+      while (leftLines.length < rows) leftLines.push("");
+      while (rightLines.length < rows) rightLines.push("");
+
+      // ── Render ──
+      // ANSI-aware visible length (strip escape sequences)
+      const vis = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
+
+      const innerW = L + R + 4; // " {L} │ {R}" between outer │s
+      const topBorder = `╭───${title}${"─".repeat(innerW - 3 - title.length)}╮`;
+      const botBorder = `╰${"─".repeat(innerW)}╯`;
+
+      const output: string[] = ["", topBorder];
+      for (let i = 0; i < rows; i++) {
+        const lText = leftLines[i];
+        const rText = rightLines[i];
+        const lVis = vis(lText);
+        const rPad = " ".repeat(Math.max(0, R - vis(rText)));
+
+        let lCell: string;
+        if (i === 1) {
+          // Center the server URL line
+          const gap = Math.max(0, L - lVis);
+          const padLeft = Math.floor(gap / 2);
+          lCell = " ".repeat(padLeft) + lText + " ".repeat(gap - padLeft);
+        } else {
+          lCell = lText + " ".repeat(Math.max(0, L - lVis));
+        }
+
+        output.push(`│ ${lCell} │ ${rText}${rPad}│`);
+      }
+      output.push(botBorder);
+      output.push("");
+
+      console.log(output.join("\n"));
     });
 
     function shutdown(signal: string) {

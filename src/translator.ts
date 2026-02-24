@@ -14,8 +14,16 @@ import type {
   OllamaResponse,
   OllamaToolCall,
   OllamaToolDefinition,
+  ToolParamRename,
+  ToolParamCoercion,
+  ToolSchemaInfo,
 } from "./types.js";
-import { healToolArguments, generateToolUseId } from "./tool-healing.js";
+import {
+  healToolArguments,
+  healToolParameterNames,
+  healToolParameterTypes,
+  generateToolUseId,
+} from "./tool-healing.js";
 
 /**
  * Default model name mapping: Claude model names → Ollama model names.
@@ -299,28 +307,66 @@ export function anthropicToOllama(
 
 /**
  * Translate Ollama tool_calls to Anthropic tool_use content blocks.
- * Applies tool argument healing for each call.
+ * Applies three-phase healing for each call: JSON format, parameter names,
+ * and parameter types.
+ *
+ * @param toolSchemaMap - Optional map from tool name → schema info (names + types).
+ *   When provided, argument keys and types that don't match the schema are corrected.
+ * @returns The translated blocks and any healing actions (renames, coercions) applied.
  */
 export function ollamaToolCallsToAnthropic(
   toolCalls: OllamaToolCall[],
-): AnthropicContentBlock[] {
-  return toolCalls.map((tc) => ({
-    type: "tool_use" as const,
-    id: generateToolUseId(),
-    name: tc.function.name,
-    input: healToolArguments(tc.function.arguments),
-  }));
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
+): { blocks: AnthropicContentBlock[]; renames: ToolParamRename[]; coercions: ToolParamCoercion[] } {
+  const allRenames: ToolParamRename[] = [];
+  const allCoercions: ToolParamCoercion[] = [];
+
+  const blocks = toolCalls.map((tc) => {
+    let args = healToolArguments(tc.function.arguments);
+
+    if (toolSchemaMap) {
+      const schema = toolSchemaMap.get(tc.function.name);
+      if (schema) {
+        const { healed: namedArgs, renames } = healToolParameterNames(args, schema.names);
+        args = namedArgs;
+        for (const [from, to] of renames) {
+          allRenames.push({ tool: tc.function.name, from, to });
+        }
+
+        const { healed: typedArgs, coercions } = healToolParameterTypes(args, schema.types);
+        args = typedArgs;
+        for (const [param, from, to] of coercions) {
+          allCoercions.push({ tool: tc.function.name, param, from, to });
+        }
+      }
+    }
+
+    return {
+      type: "tool_use" as const,
+      id: generateToolUseId(),
+      name: tc.function.name,
+      input: args,
+    };
+  });
+
+  return { blocks, renames: allRenames, coercions: allCoercions };
 }
 
 /**
  * Translate a non-streaming Ollama response to an Anthropic response.
+ *
+ * @param toolSchemaMap - Optional schema map for parameter healing (names + types).
+ * @returns The Anthropic response and any healing actions (renames, coercions) applied.
  */
 export function ollamaToAnthropic(
   ollamaRes: OllamaResponse,
   requestedModel: string,
   messageId?: string,
-): AnthropicResponse {
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
+): { response: AnthropicResponse; renames: ToolParamRename[]; coercions: ToolParamCoercion[] } {
   const id = messageId ?? generateMessageId();
+  let renames: ToolParamRename[] = [];
+  let coercions: ToolParamCoercion[] = [];
 
   const content: AnthropicContentBlock[] = [];
 
@@ -331,7 +377,10 @@ export function ollamaToAnthropic(
 
   // Add tool_use blocks if any
   if (ollamaRes.message.tool_calls && ollamaRes.message.tool_calls.length > 0) {
-    content.push(...ollamaToolCallsToAnthropic(ollamaRes.message.tool_calls));
+    const result = ollamaToolCallsToAnthropic(ollamaRes.message.tool_calls, toolSchemaMap);
+    content.push(...result.blocks);
+    renames = result.renames;
+    coercions = result.coercions;
   }
 
   // Add text block only if there is text content
@@ -349,16 +398,20 @@ export function ollamaToAnthropic(
   const stopReason = hasToolUse ? "end_turn" : mapStopReason(ollamaRes.done_reason);
 
   return {
-    id,
-    type: "message",
-    role: "assistant",
-    content,
-    model: requestedModel,
-    stop_reason: stopReason,
-    stop_sequence: null,
-    usage: {
-      input_tokens: ollamaRes.prompt_eval_count ?? 0,
-      output_tokens: ollamaRes.eval_count ?? 0,
+    response: {
+      id,
+      type: "message",
+      role: "assistant",
+      content,
+      model: requestedModel,
+      stop_reason: stopReason,
+      stop_sequence: null,
+      usage: {
+        input_tokens: ollamaRes.prompt_eval_count ?? 0,
+        output_tokens: ollamaRes.eval_count ?? 0,
+      },
     },
+    renames,
+    coercions,
   };
 }

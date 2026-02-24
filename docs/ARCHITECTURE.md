@@ -130,13 +130,27 @@ Validates and translates Anthropic `thinking` requests.
 - `needsThinkingValidation(req)` — true when request has a `thinking` field
 
 ### `src/tool-healing.ts` — Tool Call Healing
-Repairs malformed tool call `arguments` from Ollama models.
+Three-phase healing for tool calls from Ollama models.
 
-- `healToolArguments(args)` — three-stage recovery:
+**Phase 1 — Argument format healing** (`healToolArguments`):
   1. Already an object → return as-is
   2. Valid JSON string → parse
   3. Double-escaped JSON string → unescape then parse
   4. Unrecoverable → `{ raw: args }`
+
+**Phase 2 — Parameter name healing** (`healToolParameterNames`):
+  When a model uses the wrong parameter name (e.g. `file` instead of `file_path`),
+  this function matches against the tool's JSON schema. A wrong key is renamed
+  when it is a contiguous substring of exactly one schema property (or vice versa).
+  Zero-copy on the happy path (all keys valid).
+
+**Phase 3 — Parameter type coercion** (`healToolParameterTypes`):
+  When a model sends a value with the wrong JSON type (e.g. an array `["*.ts","*.js"]`
+  where a string is expected), this function coerces the value to match the schema type.
+  Supported coercions: array→string (join with ", "), number→string, string→number,
+  string→boolean. Zero-copy on the happy path (all types valid).
+
+- `buildToolSchemaMap(tools)` — builds a `Map<toolName, ToolSchemaInfo>` from the request's tool definitions, where `ToolSchemaInfo` contains both property names (`Set<string>`) and property types (`Map<string, string>`). Built once per request, only when tool calls are present.
 - `generateToolUseId()` — creates `toolu_<16 hex>` IDs
 
 ### `src/token-counter.ts` — Token Counting

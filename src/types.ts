@@ -6,6 +6,20 @@
  */
 export type LogLevel = "error" | "warn" | "info" | "debug";
 
+// ─── Tool Healing Types ─────────────────────────────────────────────────────
+
+export type ToolParamRename = { tool: string; from: string; to: string };
+export type ToolParamCoercion = { tool: string; param: string; from: string; to: string };
+
+/**
+ * Per-tool schema info extracted from the request's tool definitions.
+ * Used for parameter name healing and type coercion.
+ */
+export type ToolSchemaInfo = {
+  names: Set<string>;
+  types: Map<string, string>;  // property name → JSON Schema type
+};
+
 // ─── Anthropic API Types ────────────────────────────────────────────────────
 
 export type AnthropicContentBlockText = {

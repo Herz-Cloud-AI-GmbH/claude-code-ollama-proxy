@@ -31,7 +31,10 @@ TypeScript/Node.js HTTP proxy. Translates Anthropic Messages API → Ollama chat
 make install          # npm install + npm rebuild esbuild (supply-chain hardened via .npmrc)
 make build            # compile TypeScript → dist/
 make test             # run all Vitest suites (must stay green)
-make start            # build + run proxy (OLLAMA_URL / DEFAULT_MODEL / PORT overridable)
+make start            # build + start proxy in background (non-blocking)
+make start-fg         # build + start proxy in foreground (blocking)
+make stop             # stop a backgrounded proxy (reads proxy.pid)
+make run              # start proxy in background + launch Claude Code
 make dev              # hot-reload via tsx, no build step
 make claude           # launch Claude Code pointed at the proxy
 make clean            # remove dist/ and node_modules/
@@ -42,7 +45,9 @@ Direct invocation after build:
 
 ```bash
 node dist/cli.js --port 3000 --ollama-url http://host.docker.internal:11434 --default-model qwen3:8b
-node dist/cli.js --init   # write proxy.config.json and exit
+node dist/cli.js --background --log-file proxy.log   # start as daemon
+node dist/cli.js --stop                               # stop the daemon
+node dist/cli.js --init                               # write proxy.config.json and exit
 ```
 
 ---

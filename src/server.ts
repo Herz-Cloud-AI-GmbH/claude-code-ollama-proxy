@@ -23,6 +23,7 @@ export function createServer(config: ProxyConfig) {
     serviceName: "claude-code-ollama-proxy",
     serviceVersion: "0.1.0",
     logFile: config.logFile,
+    quiet: config.quiet,
   });
 
   const app = express();

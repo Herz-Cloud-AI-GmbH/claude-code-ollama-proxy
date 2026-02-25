@@ -14,7 +14,7 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
   - all inference runs locally via Ollama
   - no Anthropic key needed
 - **Devcontainer-ready**
-  - one `make start` / `make claude` gets you running inside a VS Code devcontainer
+  - one `make run` (or `make start` + `make claude`) gets you running inside a VS Code devcontainer
 - **Full Claude Code compatibility**
   — streaming SSE
   - tool calls (with JSON healing and parallel→sequential rewriting)
@@ -106,6 +106,8 @@ make install   # npm install + npm rebuild esbuild (supply-chain hardened)
 make build     # compile TypeScript → dist/
 make test      # run all Vitest suites
 make dev       # hot-reload via tsx (no build step)
+make run       # start proxy (background) + launch Claude Code
+make stop      # stop the backgrounded proxy
 ```
 
 ## Documentation

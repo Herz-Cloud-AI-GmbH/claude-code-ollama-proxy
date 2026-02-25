@@ -41,31 +41,36 @@ export type LoggerConfig = {
    * NDJSON record is written to both stdout and the file.
    */
   logFile?: string;
+  /**
+   * When true and a logFile is configured, suppress stdout output.
+   * Log records go only to the file. Used in background/daemon mode
+   * where no terminal is attached.
+   */
+  quiet?: boolean;
 };
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
 /**
- * Structured logger that emits OTEL-compatible JSON records to stdout.
+ * Structured logger that emits OTEL-compatible JSON records.
+ *
+ * By default records go to stdout. When a `logFile` is configured, records
+ * also go to the file. When `quiet` is true and a `logFile` is set, stdout
+ * is suppressed and records go only to the file (used in background mode).
  *
  * Records below the configured level are suppressed before any
  * serialisation work is done, so there is zero performance overhead at
  * runtime for suppressed levels.
- *
- * Output format (one JSON object per line / NDJSON):
- * ```json
- * {"Timestamp":"…","SeverityNumber":9,"SeverityText":"INFO","Body":"…","Attributes":{…},"Resource":{…}}
- * ```
- * The otelcol `filelog` receiver or any OTLP-compatible collector can
- * consume this stream directly.
  */
 export class Logger {
   private readonly levelNum: number;
   private readonly resource: Record<string, string>;
   private readonly fileStream?: WriteStream;
+  private readonly quiet: boolean;
 
   constructor(private readonly config: LoggerConfig) {
     this.levelNum = SEVERITY_NUMBERS[config.level];
+    this.quiet = !!(config.quiet && config.logFile);
     this.resource = {
       "service.name": config.serviceName,
       "service.version": config.serviceVersion,
@@ -97,7 +102,7 @@ export class Logger {
       Resource: this.resource,
     };
     const line = JSON.stringify(record) + "\n";
-    process.stdout.write(line);
+    if (!this.quiet) process.stdout.write(line);
     this.fileStream?.write(line);
   }
 

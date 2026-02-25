@@ -28,30 +28,35 @@ How to set up, configure, and run the claude-code-ollama-proxy.
 
 3. **Open the repo in VS Code** and choose _"Reopen in Container"_ when prompted (or use the Command Palette: `Dev Containers: Reopen in Container`). The devcontainer builds once and then starts.
 
-4. **Terminal 1 — start the proxy** inside the devcontainer:
+4. **Start the proxy and Claude Code** inside the devcontainer:
    ```bash
-   make start
+   make run
    ```
-   The proxy listens on `http://localhost:3000` and connects to Ollama via `host.docker.internal:11434`.
+   This starts the proxy in the background (non-blocking) and then launches Claude Code. The proxy listens on `http://localhost:3000` and connects to Ollama via `host.docker.internal:11434`. Authentication is handled automatically via `.claude/settings.json` — no Anthropic account or API key needed.
 
-5. **Terminal 2 — launch Claude Code** inside the devcontainer:
+   Alternatively, start them separately:
    ```bash
-   make claude
+   make start    # proxy starts in background, terminal returns immediately
+   make claude   # launch Claude Code in the same terminal
    ```
-   Claude Code is now pointed at the proxy. Authentication is handled automatically via `.claude/settings.json` — no Anthropic account or API key needed.
+
+   To stop a backgrounded proxy:
+   ```bash
+   make stop
+   ```
 
 To use a different model or port:
 ```bash
-make start DEFAULT_MODEL=deepseek-r1:8b PORT=3456
-make claude DEFAULT_MODEL=deepseek-r1:8b PORT=3456
+make run DEFAULT_MODEL=deepseek-r1:8b PORT=3456
 ```
 
 Other useful targets:
 ```bash
-make help    # list all targets with current variable values
-make dev     # hot-reload mode via tsx (no build step needed)
-make test    # run all Vitest tests
-make clean   # remove dist/ and node_modules/
+make help      # list all targets with current variable values
+make start-fg  # start proxy in foreground (blocking, logs to stdout)
+make dev       # hot-reload mode via tsx (no build step needed)
+make test      # run all Vitest tests
+make clean     # remove dist/ and node_modules/
 ```
 
 ---
@@ -147,6 +152,9 @@ proxy.config.json  <  environment variables  <  CLI flags
 | `logLevel` | `--log-level` | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug` |
 | `logFile` | `--log-file` | `LOG_FILE` | _(none)_ | Log file path (truncated on each start) |
 | `verbose` | `--verbose, -v` | — | `false` | Shorthand for `--log-level debug` |
+| — | `--background, -b` | — | `false` | Start as background daemon (requires `--log-file`) |
+| — | `--stop` | — | — | Stop a backgrounded proxy (reads `proxy.pid`) |
+| — | `--quiet, -q` | — | `false` | Suppress stdout logs (implied by `--background`) |
 
 ### Model mapping
 
@@ -233,10 +241,22 @@ LOG_LEVEL=warn make start
 By default the proxy writes to **stdout only**. Pass `--log-file <path>` (or set `LOG_FILE`) to also write to a file. The file is **truncated on every proxy start** so it always contains only the current session.
 
 ```bash
-make start                        # stdout + proxy.log (Makefile default)
+make start                        # background + proxy.log (Makefile default)
 make start LOG_FILE=/tmp/p.log    # custom path
-make start LOG_FILE=              # stdout only (disable file logging)
+make start-fg LOG_FILE=           # foreground, stdout only (disable file logging)
 ```
+
+### Background mode
+
+`make start` (or `--background`) starts the proxy as a detached daemon. The parent process exits immediately, freeing the terminal for `make claude` or other work. A `proxy.pid` file is written to the working directory.
+
+```bash
+make start          # background, logs to proxy.log
+make stop           # sends SIGTERM, cleans up proxy.pid
+make run            # start + claude in one command
+```
+
+Use `make start-fg` (or omit `--background`) for the traditional blocking foreground mode.
 
 ### Reading logs
 

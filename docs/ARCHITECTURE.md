@@ -69,11 +69,14 @@ Entry point. Uses [Commander.js](https://github.com/tj/commander.js) to parse
 CLI flags and environment variables, then starts the HTTP server.
 
 Responsibilities:
-- Parse `--port`, `--ollama-url`, `--model-map`, `--default-model`, `--log-level`, `--verbose`
+- Parse `--port`, `--ollama-url`, `--model-map`, `--default-model`, `--log-level`, `--verbose`, `--background`, `--stop`, `--quiet`
 - Build `ProxyConfig`
+- `--background`: spawn a detached child process with `--quiet`, write `proxy.pid`, exit parent
+- `--stop`: read `proxy.pid`, send SIGTERM, clean up PID file
 - Call `createServer(config).listen(port)`
+- Write `proxy.pid` on successful listen (both foreground and background)
 - Print startup banner (including thinking model list)
-- Handle `SIGINT`/`SIGTERM` for graceful shutdown
+- Handle `SIGINT`/`SIGTERM` for graceful shutdown (removes `proxy.pid`)
 
 ### `src/server.ts` — HTTP Proxy Server
 Creates an Express application with three routes:
@@ -171,13 +174,13 @@ Typed fetch wrappers for Ollama's REST API:
 
 ### `src/logger.ts` — Structured OTEL Logger
 Emits [OpenTelemetry LogRecord](https://opentelemetry.io/docs/specs/otel/logs/data-model/)
-NDJSON to stdout, consumable by the bundled `otelcol` or any OTLP-compatible
-log pipeline.
+NDJSON to stdout and/or a log file.
 
 - `createLogger(config)` — creates a `Logger` instance with level guard
 - `Logger.error/warn/info/debug(body, attributes?)` — emits OTEL JSON record
 - `parseLogLevel(value)` — validates and normalises log level strings
 - `generateRequestId()` — creates `req_<8 hex>` correlation IDs
+- `quiet` mode: when `quiet: true` and `logFile` is set, stdout is suppressed and records go only to the file (used by `--background` mode)
 
 See [LOGGING.md](LOGGING.md) for the full reference.
 
@@ -249,6 +252,7 @@ type ProxyConfig = {
   verbose: boolean;          // Shorthand for logLevel: "debug"
   logLevel?: LogLevel;       // "error" | "warn" | "info" | "debug" (default: "info")
   logFile?: string;          // Optional NDJSON log file path
+  quiet?: boolean;           // Suppress stdout logs (used by --background)
 };
 ```
 

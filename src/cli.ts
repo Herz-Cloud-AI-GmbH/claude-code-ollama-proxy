@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { spawn } from "node:child_process";
 import { createServer } from "./server.js";
 import { DEFAULT_MODEL_MAP } from "./translator.js";
 import {
@@ -13,6 +14,8 @@ import {
 } from "./config.js";
 import { parseLogLevel } from "./logger.js";
 import type { ModelMap, ProxyConfig } from "./types.js";
+
+const PID_FILE = resolve(process.cwd(), "proxy.pid");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -112,6 +115,21 @@ program
     "Write NDJSON log records to this file in addition to stdout. File is truncated on each start.",
     process.env.LOG_FILE ?? "",
   )
+  .option(
+    "-b, --background",
+    "Start the proxy as a background daemon. Requires --log-file. Parent exits immediately after spawn.",
+    false,
+  )
+  .option(
+    "--stop",
+    "Stop a previously backgrounded proxy (reads proxy.pid in the current directory)",
+    false,
+  )
+  .option(
+    "-q, --quiet",
+    "Suppress stdout log output (logs go only to --log-file). Implied by --background.",
+    false,
+  )
   .action((options: {
     config?: string;
     init: boolean;
@@ -124,7 +142,33 @@ program
     logLevel: string;
     verbose: boolean;
     logFile: string;
+    background: boolean;
+    stop: boolean;
+    quiet: boolean;
   }) => {
+    // ── --stop: send SIGTERM to a backgrounded proxy ──────────────────────
+    if (options.stop) {
+      if (!existsSync(PID_FILE)) {
+        console.error("No proxy.pid file found — is the proxy running in background mode?");
+        process.exit(1);
+      }
+      const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
+      try {
+        process.kill(pid, "SIGTERM");
+        console.log(`Sent SIGTERM to proxy (PID ${pid})`);
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ESRCH") {
+          console.log(`Proxy (PID ${pid}) is not running — removing stale PID file`);
+        } else {
+          console.error(`Failed to stop proxy (PID ${pid}):`, err);
+          process.exit(1);
+        }
+      }
+      try { unlinkSync(PID_FILE); } catch { /* already gone */ }
+      process.exit(0);
+    }
+
     // ── --init: write default config file and exit ─────────────────────────
     if (options.init) {
       const dest = resolve(process.cwd(), CONFIG_FILE_NAME);
@@ -143,6 +187,34 @@ program
       });
       console.log(`Created config file: ${dest}`);
       console.log("Edit it, then run: claude-code-ollama-proxy");
+      process.exit(0);
+    }
+
+    // ── --background: respawn as detached child and exit parent ────────────
+    if (options.background) {
+      if (!options.logFile) {
+        console.error("--background requires --log-file (logs must go somewhere when stdout is detached)");
+        process.exit(1);
+      }
+      const args = process.argv.slice(2).filter(
+        (a) => a !== "--background" && a !== "-b",
+      );
+      args.push("--quiet");
+
+      const child = spawn(process.execPath, [__filename, ...args], {
+        detached: true,
+        stdio: "ignore",
+        cwd: process.cwd(),
+      });
+      child.unref();
+
+      if (child.pid) {
+        writeFileSync(PID_FILE, String(child.pid) + "\n");
+        console.log(`Proxy started in background (PID ${child.pid})`);
+        console.log(`  Log file: ${options.logFile}`);
+        console.log(`  PID file: ${PID_FILE}`);
+        console.log(`  Stop:     node dist/cli.js --stop`);
+      }
       process.exit(0);
     }
 
@@ -190,11 +262,15 @@ program
       verbose: options.verbose,
       logLevel: effectiveLogLevel,
       logFile: options.logFile || undefined,
+      quiet: options.quiet || undefined,
     });
 
     const app = createServer(config);
 
     const server = app.listen(config.port, () => {
+      // Write PID file so --stop can find us (both foreground and background)
+      writeFileSync(PID_FILE, String(process.pid) + "\n");
+
       const mapEntries = Object.entries(config.modelMap);
       const effectiveLevel = config.logLevel ?? (config.verbose ? "debug" : "info");
 
@@ -257,7 +333,9 @@ program
       rightLines.push(`${c.dim}         nemotron glm4 qwq${c.reset}`);
       rightLines.push(`${c.dim}${"─".repeat(R)}${c.reset}`);
       rightLines.push(`${c.bCyan}Tips${c.reset}`);
-      if (config.logFile) {
+      if (config.logFile && config.quiet) {
+        rightLines.push(`${c.dim}Logs → ${config.logFile} only${c.reset}`);
+      } else if (config.logFile) {
         rightLines.push(`${c.dim}Logs → stdout + ${config.logFile}${c.reset}`);
       } else {
         rightLines.push(`${c.dim}Add${c.reset} ${c.bBlue}--log-file proxy.log${c.reset} ${c.dim}for file logging${c.reset}`);
@@ -307,6 +385,7 @@ program
 
     function shutdown(signal: string) {
       console.log(`\nReceived ${signal}, shutting down gracefully...`);
+      try { unlinkSync(PID_FILE); } catch { /* already gone */ }
       server.close(() => {
         console.log("Server closed.");
         process.exit(0);

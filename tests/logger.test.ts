@@ -340,4 +340,45 @@ describe("Logger — logFile", () => {
     expect(records).toHaveLength(1);
     expect(records[0].Body).toBe("written");
   });
+
+  it("quiet mode suppresses stdout but still writes to file", async () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      written.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+    const logger = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      logFile: logPath,
+      quiet: true,
+    });
+    logger.info("quiet message");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    spy.mockRestore();
+
+    expect(written.some((l) => l.includes("quiet message"))).toBe(false);
+    const records = readLogRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0].Body).toBe("quiet message");
+  });
+
+  it("quiet mode without logFile still writes to stdout (safety fallback)", () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      written.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+    const logger = createLogger({
+      level: "info",
+      serviceName: "s",
+      serviceVersion: "0",
+      quiet: true,
+    });
+    logger.info("fallback message");
+    spy.mockRestore();
+
+    expect(written.some((l) => l.includes("fallback message"))).toBe(true);
+  });
 });

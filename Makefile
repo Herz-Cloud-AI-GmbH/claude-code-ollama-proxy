@@ -1,4 +1,4 @@
-.PHONY: install build test clean start dev claude help
+.PHONY: install build test clean start start-fg stop run dev claude help
 
 # Ollama runs on the host machine; host.docker.internal resolves to the host
 # gateway from inside the devcontainer (set via --add-host in devcontainer.json).
@@ -20,12 +20,26 @@ test: ## Run all Vitest test suites
 clean: ## Remove generated artefacts (dist/ and node_modules/)
 	rm -rf dist node_modules
 
-start: build ## Build and start the proxy (override: OLLAMA_URL, DEFAULT_MODEL, PORT, LOG_FILE)
+start: build ## Build and start the proxy in background (non-blocking). Use start-fg for foreground.
+	node dist/cli.js \
+		--port $(PORT) \
+		--ollama-url $(OLLAMA_URL) \
+		--default-model $(DEFAULT_MODEL) \
+		$(if $(LOG_FILE),--log-file $(LOG_FILE)) \
+		--background
+
+start-fg: build ## Build and start the proxy in foreground (blocking, logs to stdout)
 	node dist/cli.js \
 		--port $(PORT) \
 		--ollama-url $(OLLAMA_URL) \
 		--default-model $(DEFAULT_MODEL) \
 		$(if $(LOG_FILE),--log-file $(LOG_FILE))
+
+stop: ## Stop a backgrounded proxy (reads proxy.pid)
+	node dist/cli.js --stop
+
+run: start ## Start proxy in background, then launch Claude Code
+	$(MAKE) claude
 
 dev: ## Start in development mode with hot-reload (override: OLLAMA_URL, DEFAULT_MODEL, PORT, LOG_FILE)
 	OLLAMA_URL=$(OLLAMA_URL) \
@@ -61,5 +75,5 @@ help: ## Show this help message
 	@echo "  LOG_FILE      = $(LOG_FILE)  (set to empty to disable: LOG_FILE=)"
 	@echo ""
 	@echo "Targets:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-10s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""

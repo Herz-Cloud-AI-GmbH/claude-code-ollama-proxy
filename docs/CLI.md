@@ -159,6 +159,48 @@ Can also be set in the config file:
 
 ---
 
+### `-b, --background`
+
+**Default:** `false`  
+**Requires:** `--log-file`
+
+Start the proxy as a background daemon. The parent process spawns a detached
+child, writes `proxy.pid` to the current directory, and exits immediately.
+Stdout is suppressed (`--quiet` is implied); all logs go to the file only.
+
+```bash
+claude-code-ollama-proxy --background --log-file proxy.log
+```
+
+Use `--stop` to shut it down.
+
+---
+
+### `--stop`
+
+Stop a previously backgrounded proxy. Reads `proxy.pid` from the current
+directory, sends `SIGTERM`, and removes the PID file.
+
+```bash
+claude-code-ollama-proxy --stop
+```
+
+---
+
+### `-q, --quiet`
+
+**Default:** `false`
+
+Suppress stdout log output. Logs go only to the file specified by `--log-file`.
+Implied by `--background`. If no `--log-file` is set, this flag is ignored
+(stdout remains the only output).
+
+```bash
+claude-code-ollama-proxy --quiet --log-file proxy.log
+```
+
+---
+
 ### `-v, --verbose`
 
 **Default:** `false`  
@@ -206,6 +248,21 @@ Can also be set in the config file:
 
 ```json
 { "logLevel": "debug" }
+```
+
+---
+
+### `--log-file <path>`
+
+**Default:** _(none)_  
+**Environment:** `LOG_FILE`
+
+Write NDJSON log records to this file. The file is truncated on each start.
+When combined with `--quiet` or `--background`, stdout is suppressed and logs
+go only to the file.
+
+```bash
+claude-code-ollama-proxy --log-file proxy.log
 ```
 
 ---

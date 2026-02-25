@@ -288,6 +288,11 @@ export type ProxyConfig = {
    */
   logFile?: string;
   /**
+   * When true, suppress stdout log output. Requires logFile to be set.
+   * Used automatically by --background mode.
+   */
+  quiet?: boolean;
+  /**
    * When true (default), parallel tool-call patterns in the conversation
    * history are rewritten into sequential assistant/user pairs before
    * forwarding to Ollama.  This helps smaller models that struggle with

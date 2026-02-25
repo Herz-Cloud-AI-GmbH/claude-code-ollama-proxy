@@ -13,6 +13,7 @@ TypeScript/Node.js HTTP proxy. Translates Anthropic Messages API → Ollama chat
 | Thinking model detection | `src/thinking.ts` |
 | Tool call healing (JSON + param names + types) | `src/tool-healing.ts` |
 | Parallel → sequential tool rewrite | `src/translator.ts` (`sequentializeToolCalls`) |
+| Conversation history healing | `src/translator.ts` (`healConversationHistory`) |
 | Token counting | `src/token-counter.ts` |
 | HTTP routes and middleware | `src/server.ts` |
 | CLI flags and config loading | `src/cli.ts`, `docs/CLI.md` |
@@ -56,7 +57,8 @@ node dist/cli.js --init   # write proxy.config.json and exit
 6. All local imports use `.js` extension (TypeScript ESM convention).
 7. `DEFAULT_MODEL_MAP = {}` — all Claude model names fall through to `defaultModel` unless explicitly mapped.
 8. Parallel tool calls in conversation history are rewritten into sequential rounds by default (`sequentialToolCalls: true`) so smaller models don't hallucinate "sibling tool call" errors. Disable with `--no-sequential-tools`.
-9. Tool call healing is three-phase: (a) `healToolArguments` fixes malformed JSON strings; (b) `healToolParameterNames` renames wrong argument keys using the tool's JSON schema (e.g. `file` → `file_path`); (c) `healToolParameterTypes` coerces values to match schema types (e.g. `["*.ts","*.js"]` → `"*.ts, *.js"` when schema expects `string`). The schema map (names + types) is built once per request from the `tools` array and threaded through the response path.
+9. Tool call healing is three-phase: (a) `healToolArguments` fixes malformed JSON strings; (b) `healToolParameterNames` renames wrong argument keys using the tool's JSON schema (e.g. `file` → `file_path`); (c) `healToolParameterTypes` coerces values to match schema types (e.g. `["*.ts","*.js"]` → `"*.ts, *.js"` when schema expects `string`). The schema map (names + types) is built once per request from the `tools` array and threaded through both the request and response paths.
+10. Conversation history healing (`healConversationHistory`): on the request path, tool_use blocks in history are healed (names + types), and failed tool_use/tool_result rounds caused by parameter validation errors are stripped. This prevents the model from seeing a poisoned history of failures and giving up on tools.
 
 ---
 

@@ -44,6 +44,7 @@ export type AnthropicContentBlockToolResult = {
   type: "tool_result";
   tool_use_id: string;
   content: string | AnthropicContentBlock[];
+  is_error?: boolean;
 };
 
 export type AnthropicContentBlock =

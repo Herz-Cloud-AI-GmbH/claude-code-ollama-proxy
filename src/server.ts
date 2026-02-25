@@ -130,21 +130,22 @@ export function createServer(config: ProxyConfig) {
       }
     }
 
+    const toolSchemaMap = anthropicReq.tools?.length
+      ? buildToolSchemaMap(anthropicReq.tools)
+      : undefined;
+
     const ollamaReq = anthropicToOllama(
       anthropicReq,
       config.modelMap,
       config.defaultModel,
       config.sequentialToolCalls,
+      toolSchemaMap,
     );
 
     logger.debug("Ollama request body", {
       "proxy.request_id": requestId,
       "proxy.ollama_request": ollamaReq,
     });
-
-    const toolSchemaMap = anthropicReq.tools?.length
-      ? buildToolSchemaMap(anthropicReq.tools)
-      : undefined;
 
     try {
       if (anthropicReq.stream) {

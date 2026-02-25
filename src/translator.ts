@@ -202,6 +202,138 @@ export function sequentializeToolCalls(
   return result;
 }
 
+const PARAM_ERROR_PATTERN = /InputValidationError|parameter.*missing|unexpected parameter|type is expected as/i;
+const SIBLING_ERROR_PATTERN = /[Ss]ibling tool call errored/;
+
+/**
+ * Heal tool_use inputs in conversation history and strip failed rounds
+ * whose errors were caused by parameter issues our healing can now fix.
+ *
+ * Without this, the model sees a history of failed tool calls (e.g.
+ * Read({"path":...}) → error "file_path is missing") and learns to avoid
+ * those tools entirely. By healing the inputs and removing the error rounds,
+ * the model gets a clean history and can use tools correctly.
+ *
+ * For each assistant message with tool_use blocks:
+ *  1. Apply parameter name + type healing to each tool_use input
+ *  2. If any tool_use was healed AND the next user message has a matching
+ *     error tool_result about parameter validation, strip that pair
+ *  3. Also strip "Sibling tool call errored" results (cascade failures)
+ */
+export function healConversationHistory(
+  messages: AnthropicMessage[],
+  toolSchemaMap: Map<string, ToolSchemaInfo>,
+): AnthropicMessage[] {
+  const result: AnthropicMessage[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    if (msg.role !== "assistant" || typeof msg.content === "string") {
+      result.push(msg);
+      continue;
+    }
+
+    const toolUseBlocks = msg.content.filter(
+      (b): b is AnthropicContentBlockToolUse => b.type === "tool_use",
+    );
+
+    if (toolUseBlocks.length === 0) {
+      result.push(msg);
+      continue;
+    }
+
+    // Try healing each tool_use input; track which IDs were healed
+    const healedIds = new Set<string>();
+    const healedContent = msg.content.map((block) => {
+      if (block.type !== "tool_use") return block;
+
+      const schema = toolSchemaMap.get(block.name);
+      if (!schema) return block;
+
+      let args = block.input;
+      let wasHealed = false;
+
+      const { healed: namedArgs, renames } = healToolParameterNames(args, schema.names);
+      if (renames.length > 0) {
+        args = namedArgs;
+        wasHealed = true;
+      }
+
+      const { healed: typedArgs, coercions } = healToolParameterTypes(args, schema.types);
+      if (coercions.length > 0) {
+        args = typedArgs;
+        wasHealed = true;
+      }
+
+      if (wasHealed) {
+        healedIds.add(block.id);
+        return { ...block, input: args };
+      }
+      return block;
+    });
+
+    if (healedIds.size === 0) {
+      result.push(msg);
+      continue;
+    }
+
+    // Look at the next message for matching error tool_results
+    const nextMsg = messages[i + 1];
+    if (!nextMsg || nextMsg.role !== "user" || typeof nextMsg.content === "string") {
+      result.push({ ...msg, content: healedContent });
+      continue;
+    }
+
+    // Determine which tool_result blocks to strip
+    const idsToStrip = new Set<string>();
+    for (const block of nextMsg.content) {
+      if (block.type !== "tool_result") continue;
+      const tr = block as AnthropicContentBlockToolResult;
+      if (!tr.is_error) continue;
+
+      const errorText = typeof tr.content === "string"
+        ? tr.content
+        : JSON.stringify(tr.content);
+
+      if (healedIds.has(tr.tool_use_id) && PARAM_ERROR_PATTERN.test(errorText)) {
+        idsToStrip.add(tr.tool_use_id);
+      } else if (SIBLING_ERROR_PATTERN.test(errorText)) {
+        idsToStrip.add(tr.tool_use_id);
+      }
+    }
+
+    if (idsToStrip.size === 0) {
+      result.push({ ...msg, content: healedContent });
+      continue;
+    }
+
+    // Strip the healed-and-errored tool_use blocks from assistant message
+    const cleanedAssistant = healedContent.filter((block) => {
+      if (block.type !== "tool_use") return true;
+      return !idsToStrip.has(block.id);
+    });
+
+    // Strip matching tool_result blocks from user message
+    const cleanedUser = nextMsg.content.filter((block) => {
+      if (block.type !== "tool_result") return true;
+      return !idsToStrip.has((block as AnthropicContentBlockToolResult).tool_use_id);
+    });
+
+    // Only push non-empty messages
+    if (cleanedAssistant.length > 0) {
+      result.push({ ...msg, content: cleanedAssistant });
+    }
+    if (cleanedUser.length > 0) {
+      result.push({ ...nextMsg, content: cleanedUser });
+    }
+
+    i++; // skip the consumed user message
+  }
+
+  return result;
+}
+
 /**
  * Convert an Anthropic message (potentially containing tool_use or tool_result
  * blocks) into one or more Ollama messages.
@@ -256,6 +388,7 @@ export function anthropicToOllama(
   modelMap: ModelMap,
   defaultModel: string,
   sequentialToolCalls = true,
+  toolSchemaMap?: Map<string, ToolSchemaInfo>,
 ): OllamaRequest {
   const ollamaModel = mapModel(req.model, modelMap, defaultModel);
 
@@ -269,9 +402,15 @@ export function anthropicToOllama(
     messages.push({ role: "system", content: systemText });
   }
 
-  const effectiveMessages = sequentialToolCalls
-    ? sequentializeToolCalls(req.messages)
+  // Heal tool_use inputs in history and strip failed rounds caused by
+  // parameter errors that our healing can now fix
+  const healedMessages = toolSchemaMap
+    ? healConversationHistory(req.messages, toolSchemaMap)
     : req.messages;
+
+  const effectiveMessages = sequentialToolCalls
+    ? sequentializeToolCalls(healedMessages)
+    : healedMessages;
 
   // Convert Anthropic messages (may expand to multiple Ollama messages)
   for (const msg of effectiveMessages) {

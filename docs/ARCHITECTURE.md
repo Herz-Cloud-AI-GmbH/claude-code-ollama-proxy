@@ -88,14 +88,16 @@ Creates an Express application with three routes:
 For `/v1/messages`:
 1. **Request/response logging** — every request gets a unique `proxy.request_id`; INFO records emitted on arrival and completion; DEBUG records include full bodies
 2. Run **thinking validation** — if `thinking` field present and mapped model is not thinking-capable: strip `thinking` field and continue (default), or reject with HTTP 400 (when `strictThinking: true`)
-3. Call `anthropicToOllama()` to build the Ollama request
-4. Fork to `handleNonStreaming` or `handleStreaming`
+3. Build `toolSchemaMap` from request's tool definitions (names + types per property)
+4. Call `anthropicToOllama()` to build the Ollama request — applies conversation history healing (strips failed parameter-error rounds) and sequential tool call rewriting
+5. Fork to `handleNonStreaming` or `handleStreaming`
 
 ### `src/translator.ts` — Protocol Translation
 Bidirectional translation between Anthropic and Ollama API shapes.
 
 Key functions:
-- `anthropicToOllama(req, modelMap, defaultModel, sequentialToolCalls?)` — translates full request including tools, thinking flag, tool_use/tool_result message blocks; optionally sequentializes parallel tool calls
+- `anthropicToOllama(req, modelMap, defaultModel, sequentialToolCalls?, toolSchemaMap?)` — translates full request including tools, thinking flag, tool_use/tool_result message blocks; applies conversation history healing and optionally sequentializes parallel tool calls
+- `healConversationHistory(messages, toolSchemaMap)` — heals tool_use inputs in conversation history (parameter names + types) and strips failed tool_use/tool_result rounds caused by parameter validation errors, preventing the model from seeing a poisoned history of failures
 - `sequentializeToolCalls(messages)` — rewrites parallel tool-call patterns (assistant with N tool_use + user with N tool_result) into N sequential assistant/user pairs so smaller models process one tool at a time
 - `ollamaToAnthropic(res, model)` — translates response including thinking block, tool_calls
 - `anthropicToolsToOllama(tools)` — converts tool definitions

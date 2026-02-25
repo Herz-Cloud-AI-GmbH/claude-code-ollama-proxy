@@ -5,12 +5,14 @@ import {
   anthropicToolsToOllama,
   extractMessageText,
   generateMessageId,
+  healConversationHistory,
   mapModel,
   mapStopReason,
   ollamaToAnthropic,
   sequentializeToolCalls,
 } from "../src/translator.js";
-import type { AnthropicMessage, AnthropicRequest, OllamaResponse } from "../src/types.js";
+import { buildToolSchemaMap } from "../src/tool-healing.js";
+import type { AnthropicMessage, AnthropicRequest, OllamaResponse, ToolSchemaInfo } from "../src/types.js";
 
 describe("generateMessageId", () => {
   it("generates an ID with the msg_ prefix", () => {
@@ -553,5 +555,379 @@ describe("anthropicToOllama with sequentialToolCalls option", () => {
     expect(result.messages[0].tool_calls).toHaveLength(2);
     expect(result.messages[1].role).toBe("tool");
     expect(result.messages[2].role).toBe("tool");
+  });
+});
+
+describe("healConversationHistory", () => {
+  const toolSchemaMap = buildToolSchemaMap([
+    {
+      name: "Read",
+      input_schema: {
+        type: "object",
+        properties: {
+          file_path: { type: "string" },
+          offset: { type: "number" },
+          limit: { type: "number" },
+        },
+      },
+    },
+    {
+      name: "Glob",
+      input_schema: {
+        type: "object",
+        properties: {
+          pattern: { type: "string" },
+          path: { type: "string" },
+        },
+      },
+    },
+  ]);
+
+  it("passes through messages with no tool_use blocks", () => {
+    const messages: AnthropicMessage[] = [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual(messages);
+  });
+
+  it("strips Read({path}) + parameter error from history", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/tmp/foo.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: Read failed due to the following issues:\nThe required parameter `file_path` is missing\nAn unexpected parameter `path` was provided</tool_use_error>",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual([]);
+  });
+
+  it("strips Read({file}) + parameter error from history", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { file: "/tmp/foo.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: Read failed\nThe required parameter `file_path` is missing\nAn unexpected parameter `file` was provided</tool_use_error>",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual([]);
+  });
+
+  it("strips Glob({pattern: [...]}) + type error from history", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Glob", input: { pattern: ["*.ts", "*.js"] } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: Glob failed\nThe parameter `pattern` type is expected as `string` but provided as `array`</tool_use_error>",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual([]);
+  });
+
+  it("strips sibling tool call errors alongside healed errors", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/tmp/a.txt" } },
+          { type: "tool_use", id: "t2", name: "Read", input: { path: "/tmp/b.txt" } },
+          { type: "tool_use", id: "t3", name: "Read", input: { path: "/tmp/c.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: Read failed\nThe required parameter `file_path` is missing\nAn unexpected parameter `path` was provided</tool_use_error>",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "t2",
+            is_error: true,
+            content: "<tool_use_error>Sibling tool call errored</tool_use_error>",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "t3",
+            is_error: true,
+            content: "<tool_use_error>Sibling tool call errored</tool_use_error>",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual([]);
+  });
+
+  it("preserves successful tool calls alongside stripped failed ones", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/tmp/a.txt" } },
+          { type: "tool_use", id: "t2", name: "Glob", input: { pattern: "*.ts" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: Read failed\nThe required parameter `file_path` is missing</tool_use_error>",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "t2",
+            content: "src/foo.ts\nsrc/bar.ts",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toHaveLength(2);
+    // Glob call preserved
+    expect(result[0]).toEqual({
+      role: "assistant",
+      content: [{ type: "tool_use", id: "t2", name: "Glob", input: { pattern: "*.ts" } }],
+    });
+    // Glob result preserved
+    expect(result[1]).toEqual({
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "t2", content: "src/foo.ts\nsrc/bar.ts" }],
+    });
+  });
+
+  it("preserves text/thinking blocks when stripping tool_use from assistant message", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Let me read the file" },
+          { type: "text", text: "I'll read the file for you." },
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/tmp/a.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: parameter `file_path` is missing</tool_use_error>",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("assistant");
+    expect(result[0].content).toEqual([
+      { type: "thinking", thinking: "Let me read the file" },
+      { type: "text", text: "I'll read the file for you." },
+    ]);
+  });
+
+  it("does not strip tool calls with non-parameter errors", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/tmp/nonexistent.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "File not found: /tmp/nonexistent.txt",
+          },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(messages);
+  });
+
+  it("does not modify messages when tool_use inputs are already correct", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/tmp/foo.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "t1", content: "file contents here" },
+        ],
+      },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    expect(result).toEqual(messages);
+  });
+
+  it("strips the assistant error explanation that follows a stripped round", () => {
+    const messages: AnthropicMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/tmp/a.txt" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            is_error: true,
+            content: "<tool_use_error>InputValidationError: parameter `file_path` is missing</tool_use_error>",
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: "The error occurred because the parameter name is incorrect.",
+      },
+      { role: "user", content: "Try again please" },
+    ];
+    const result = healConversationHistory(messages, toolSchemaMap);
+    // The tool_use + error pair is stripped, but the text messages remain
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      role: "assistant",
+      content: "The error occurred because the parameter name is incorrect.",
+    });
+    expect(result[1]).toEqual({ role: "user", content: "Try again please" });
+  });
+
+  it("handles the exact real-world failure sequence from proxy.log", () => {
+    const messages: AnthropicMessage[] = [
+      // User asks to onboard
+      { role: "user", content: "onboard yourself by reading README.md, HOWTO.md, AGENTS.md" },
+      // Attempt 1: Read with wrong param name (parallel)
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Let me read the files" },
+          { type: "tool_use", id: "t1", name: "Read", input: { path: "/workspaces/proj/README.md" } },
+          { type: "tool_use", id: "t2", name: "Read", input: { path: "/workspaces/proj/HOWTO.md" } },
+          { type: "tool_use", id: "t3", name: "Read", input: { path: "/workspaces/proj/AGENTS.md" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "t1", is_error: true, content: "<tool_use_error>InputValidationError: Read failed\nThe required parameter `file_path` is missing\nAn unexpected parameter `path` was provided</tool_use_error>" },
+          { type: "tool_result", tool_use_id: "t2", is_error: true, content: "<tool_use_error>Sibling tool call errored</tool_use_error>" },
+          { type: "tool_result", tool_use_id: "t3", is_error: true, content: "<tool_use_error>Sibling tool call errored</tool_use_error>" },
+        ],
+      },
+      // Model explains the error
+      { role: "assistant", content: "The error suggests an issue with a previous tool invocation." },
+      // User retries
+      { role: "user", content: "onboard yourself by reading the docs" },
+      // Attempt 2: Glob succeeds, then Read with wrong param name
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Let me try Glob first" },
+          { type: "tool_use", id: "t4", name: "Glob", input: { pattern: "/workspaces/proj/README.md" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "t4", content: "/workspaces/proj/README.md" },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t5", name: "Read", input: { file: "/workspaces/proj/README.md" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "t5", is_error: true, content: "<tool_use_error>InputValidationError: Read failed\nThe required parameter `file_path` is missing\nAn unexpected parameter `file` was provided</tool_use_error>" },
+        ],
+      },
+      // Model explains again
+      { role: "assistant", content: "The parameter name file is incorrect." },
+      // User retries again
+      { role: "user", content: "onboard yourself" },
+    ];
+
+    const result = healConversationHistory(messages, toolSchemaMap);
+
+    // Failed rounds should be stripped, successful ones preserved
+    // The model should see a clean history without parameter errors
+    const toolErrors = result.flatMap((m) => {
+      if (typeof m.content === "string") return [];
+      return m.content.filter(
+        (b) => b.type === "tool_result" && (b as any).is_error === true,
+      );
+    });
+    expect(toolErrors).toHaveLength(0);
+
+    // The successful Glob call should be preserved
+    const toolUses = result.flatMap((m) => {
+      if (typeof m.content === "string") return [];
+      return m.content.filter((b) => b.type === "tool_use");
+    });
+    const globCalls = toolUses.filter((b) => (b as any).name === "Glob");
+    expect(globCalls.length).toBeGreaterThanOrEqual(1);
   });
 });

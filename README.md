@@ -2,119 +2,123 @@
 
 Run **Claude Code with local Ollama models** — no Anthropic account, no API key, no cloud costs.
 
-The proxy sits between Claude Code and Ollama, translating the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) into [Ollama's chat API](https://ollama.com/) transparently. Claude Code never knows it is talking to a local model.
-
 ```
-Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollama API)──► Ollama ──► qwen3:8b
+Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollama API)──► Ollama ──► local LLM
 ```
 
-## What you get
+---
 
-- **Zero cloud dependency**
-  - all inference runs locally via Ollama
-  - no Anthropic key needed
-- **Devcontainer-ready**
-  - one `make run` (or `make start` + `make claude`) gets you running inside a VS Code devcontainer
-- **Full Claude Code compatibility**
-  — streaming SSE
-  - tool calls (with JSON healing and parallel→sequential rewriting)
-  - extended thinking
-  - token counting
-- **Supply-chain hardened**
-  — `ignore-scripts=true` in `.npmrc`; `npm rebuild esbuild` is the only explicit postinstall exception
-- **Structured logging**
-  — OTEL-compatible NDJSON to stdout and optional log file; configurable level
-  - integrates with otelcol
-- **Minimal and auditable**
-  — ~2 k lines of TypeScript across 11 focused modules
-  - no framework magic
+### Table of Contents
 
-## Alternatives and how they compare
+1. [Getting Started](#getting-started) — run in 60 seconds
+2. [Features](#features) — what the proxy does for you
+3. [How It Works](#how-it-works) — translation pipeline
+4. [Alternatives](#alternatives) — when to use something else
+5. [Documentation](#documentation) — full reference guides
+6. [License](#license)
+
+---
+
+## Getting Started
+
+**Prerequisites:** [Ollama](https://ollama.com) running on the host with a model pulled (e.g. `ollama pull qwen3:8b`).
+
+**Devcontainer (recommended):**
+
+```bash
+make run    # builds, starts proxy in background, launches Claude Code
+```
+
+**Host (no devcontainer):**
+
+Terminal 1 — start the proxy:
+```bash
+npm install && npm run build
+node dist/cli.js --default-model qwen3:8b
+```
+
+Terminal 2 — launch Claude Code:
+```bash
+ANTHROPIC_BASE_URL=http://localhost:3000 \
+ANTHROPIC_MODEL=qwen3:8b \
+ANTHROPIC_API_KEY=proxy-key \
+claude
+```
+
+See [HOWTO.md](HOWTO.md) for the full developer guide: command reference, configuration, logging, Ollama tuning.
+
+---
+
+## Features
+
+**Protocol translation**
+- Full Anthropic Messages API — streaming SSE, tool calls, extended thinking, token counting
+- Zero cloud dependency — all inference runs locally, no Anthropic key needed
+
+**Model healing** — compensates for smaller models that struggle with tool schemas
+- Tool call healing — auto-repairs malformed JSON, wrong parameter names, wrong types
+- Parallel → sequential rewriting — prevents "sibling tool call errored" hallucinations
+- Conversation history healing — strips failed tool rounds so the model doesn't give up on tools
+- Extended thinking — silently stripped for non-capable models (or strict HTTP 400 mode)
+
+**Developer experience**
+- Devcontainer-ready — `make` targets, `host.docker.internal`, zero-config auth
+- Background daemon mode — `make start` runs non-blocking with PID file management
+- Structured logging — OTEL-compatible NDJSON to stdout and/or file
+
+**Security and quality**
+- Supply-chain hardened — `ignore-scripts=true`, only `npm rebuild esbuild` allowed
+- Minimal and auditable — ~2k lines of TypeScript, 11 modules, no framework magic
+
+---
+
+## How It Works
+
+The proxy translates the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) into [Ollama's chat API](https://docs.ollama.com/api) bidirectionally.
+
+**Endpoints:**
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/v1/messages` | POST | Core proxy — translates and forwards (streaming + non-streaming) |
+| `/v1/messages/count_tokens` | POST | Token count — served locally, no Ollama round-trip |
+| `/v1/models` | GET | List Ollama models in Anthropic format |
+| `/health` | GET | Health check |
+
+**Request path:** Anthropic request → thinking validation → conversation history healing → sequential tool rewriting → Ollama request
+
+**Response path:** Ollama response → tool call healing (JSON + parameter names + parameter types) → Anthropic response
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full data flow and module responsibilities.
+
+---
+
+## Alternatives
 
 | | **this proxy** | [**ollama launch**](https://ollama.com/blog/launch) | [**claude-code-router**](https://github.com/musistudio/claude-code-router) |
 |---|---|---|---|
-| Setup | `make start` in devcontainer | `ollama launch claude` on host (Ollama v0.15+) | `npm install -g` + config file |
-| Provider support | Ollama only | Ollama + cloud models | Ollama, OpenRouter, DeepSeek, Gemini, Vertex, and more |
-| Config complexity | Low — one flag or `proxy.config.json` | Zero — interactive model picker | High — JSON config with providers, transformers, routing rules |
-| Multi-model routing | Basic — `modelMap` maps Claude tier names to Ollama models | No | Yes — route by task type (background, think, longContext, webSearch) |
-| Extended thinking | Yes — thinking silently dropped for non-capable models (sessions never break) | Depends on model; non-capable models may return errors | Yes — route thinking requests to a capable backend |
-| Tool call JSON healing | Yes — auto-repairs escaped/double-escaped argument strings from models | No | No |
-| Local token counting | Yes — `POST /v1/messages/count_tokens` served locally, no Ollama round-trip | No | No |
-| Devcontainer support | First-class (`make` targets, `host.docker.internal`) | No | No |
-| Logging | OTEL-format NDJSON to stdout + file | None | pino to file |
-| Supply-chain hardening | Yes (`ignore-scripts`) | n/a (built into Ollama binary) | No |
-| Source | Run from source in repo | Built into Ollama binary | Published to npm |
+| Setup | `make run` in devcontainer | `ollama launch claude` on host (Ollama v0.15+) | `npm install -g` + config file |
+| Provider support | Ollama only | Ollama + cloud models | Ollama, OpenRouter, DeepSeek, Gemini, Vertex, more |
+| Config complexity | Low — one flag or config file | Zero — interactive picker | High — JSON with providers, transformers, routing |
+| Multi-model routing | Basic `modelMap` | No | Yes — by task type |
+| Tool call healing | Yes — JSON, param names, param types | No | No |
+| Extended thinking | Silently stripped for non-capable | Depends on model | Route to capable backend |
+| Devcontainer support | First-class | No | No |
+| Logging | OTEL NDJSON to stdout + file | None | pino to file |
 
-**Choose this proxy if** you work primarily in a devcontainer, want an auditable single-purpose tool with per-request logging, and only need Ollama as a backend.
+**Choose this proxy** if you work in a devcontainer, want an auditable single-purpose tool with per-request logging, and only need Ollama.
 
-**Choose `ollama launch`** if you want the fastest possible zero-config setup on a host machine with Ollama v0.15+ — no separate installation needed.
+**Choose `ollama launch`** for the fastest zero-config setup on a host with Ollama v0.15+.
 
-**Choose claude-code-router** if you need to route different Claude Code tasks to different providers or models (e.g. a cheap local model for background tasks, a powerful cloud model for complex reasoning).
+**Choose claude-code-router** if you need multi-provider routing (e.g. cheap local model for background tasks, cloud model for complex reasoning).
 
 ---
-
-## Ollama setup (host machine)
-
-Ollama must run on the host before starting the proxy. The script below applies
-a set of tuned environment variables for coding workloads and then launches the
-macOS app. Copy it to a directory on your `$PATH` (e.g. `~/bin/ollama-start`)
-and make it executable:
-
-```bash
-cp scripts/ollama-start ~/bin/ollama-start
-chmod +x ~/bin/ollama-start
-ollama-start
-```
-
-```bash
-#!/usr/bin/env bash
-# ollama-start — launch Ollama with settings tuned for coding workloads.
-# Copy to ~/bin/ollama-start (or any directory on $PATH) and chmod +x.
-
-export OLLAMA_NUM_PARALLEL=2       # handle up to 2 concurrent requests
-export OLLAMA_MAX_QUEUE=64         # queue depth before rejecting requests
-export OLLAMA_CONTEXT_LENGTH=8192  # default context window per request
-export OLLAMA_KV_CACHE_TYPE=q8_0   # quantised KV cache — saves VRAM, minimal quality loss
-export OLLAMA_FLASH_ATTENTION=1    # enable Flash Attention where supported
-export OLLAMA_KEEP_ALIVE=5m        # keep model loaded for 5 min after last request
-
-open -a Ollama
-```
-
-> `open -a Ollama` is macOS-specific. On Linux replace it with `ollama serve &`.
-
----
-
-## How it works
-
-The proxy listens on a local port, accepts Anthropic-format requests, translates them to Ollama's chat API, and returns Anthropic-format responses.
-
-Key translation features:
-
-- Full `/v1/messages` endpoint — streaming (SSE) and non-streaming
-- `/v1/messages/count_tokens` served locally, no Ollama call needed
-- Automatic Claude → Ollama model name mapping (configurable)
-- Extended thinking support (`think: true`) for capable models — capable prefixes: `qwen3`, `deepseek-r1`, `magistral`, `nemotron`, `glm4`, `qwq`
-- Full tool call translation in both directions, with automatic JSON healing
-- Parallel tool calls rewritten to sequential rounds for smaller models (disable with `--no-sequential-tools`)
-- OTEL-compatible NDJSON structured logging
-
-## Development
-
-```bash
-make install   # npm install + npm rebuild esbuild (supply-chain hardened)
-make build     # compile TypeScript → dist/
-make test      # run all Vitest suites
-make dev       # hot-reload via tsx (no build step)
-make run       # start proxy (background) + launch Claude Code
-make stop      # stop the backgrounded proxy
-```
 
 ## Documentation
 
 | File | Contents |
 |---|---|
-| [HOWTO.md](HOWTO.md) | Quick start, Claude Code config, proxy options, Ollama tuning, logging |
+| [HOWTO.md](HOWTO.md) | **Developer guide** — command reference, setup, configuration, logging |
 | [AGENTS.md](AGENTS.md) | AI agent onboarding — context map, commands, conventions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Request flow, module responsibilities |
 | [docs/API.md](docs/API.md) | Endpoint reference |
@@ -122,6 +126,8 @@ make stop      # stop the backgrounded proxy
 | [docs/STREAMING.md](docs/STREAMING.md) | SSE streaming state machine |
 | [docs/LOGGING.md](docs/LOGGING.md) | Logging reference and otelcol integration |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, systemd, Nginx guides |
+
+---
 
 ## License
 

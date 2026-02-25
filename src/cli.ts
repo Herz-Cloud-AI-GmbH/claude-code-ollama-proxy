@@ -262,7 +262,7 @@ program
       verbose: options.verbose,
       logLevel: effectiveLogLevel,
       logFile: options.logFile || undefined,
-      quiet: options.quiet || undefined,
+      quiet: options.quiet,
     });
 
     const app = createServer(config);

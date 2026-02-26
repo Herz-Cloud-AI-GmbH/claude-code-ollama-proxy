@@ -1,16 +1,10 @@
-FROM --platform=linux/arm64 mcr.microsoft.com/devcontainers/javascript-node:20-bookworm
+FROM mcr.microsoft.com/devcontainers/javascript-node:20-bookworm
 
 ARG APP_FOLDER
 ARG CLAUDE_CODE_VERSION
-ARG OTELCOL_VERSION
-ARG ARCH
 
 RUN apt-get update \
     && apt-get install -y apt-transport-https ca-certificates gnupg curl wget python3-pip \
-    #
-    # Install OpenTelemetry Collector (base), pinned
-    && wget -q "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTELCOL_VERSION}/otelcol_${OTELCOL_VERSION}_linux_${ARCH}.deb" \
-    && dpkg -i otelcol_${OTELCOL_VERSION}_linux_${ARCH}.deb \
     #
     # Create config directory
     && mkdir -p /home/node/.claude \

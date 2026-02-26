@@ -7,9 +7,7 @@
       // build-time environment vars
       "args": {
         "APP_FOLDER": "/workspaces/${localWorkspaceFolderBasename}",
-        "CLAUDE_CODE_VERSION": "latest",
-        "OTELCOL_VERSION": "0.144.0",
-        "ARCH": "arm64"
+        "CLAUDE_CODE_VERSION": "latest"
       }
     },
     "remoteUser": "node",

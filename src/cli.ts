@@ -32,7 +32,7 @@ function loadVersion(): string {
 }
 
 function parseModelMap(value: string, previous: ModelMap): ModelMap {
-  // Accept JSON string: '{"claude-3-5-sonnet-20241022":"llama3.1:8b"}'
+  // Accept JSON string: '{"claude-3-5-sonnet-20241022":"qwen3.5:9b"}'
   if (value.startsWith("{")) {
     try {
       return { ...previous, ...(JSON.parse(value) as ModelMap) };
@@ -40,7 +40,7 @@ function parseModelMap(value: string, previous: ModelMap): ModelMap {
       throw new Error(`Invalid JSON for --model-map: ${value}`);
     }
   }
-  // Accept key=value pair: claude-3-5-sonnet-20241022=llama3.1:8b
+  // Accept key=value pair: claude-3-5-sonnet-20241022=qwen3.5:9b
   const eqIdx = value.indexOf("=");
   if (eqIdx === -1) {
     throw new Error(`Invalid --model-map entry (expected key=value): ${value}`);

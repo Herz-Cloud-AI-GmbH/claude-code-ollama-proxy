@@ -432,7 +432,7 @@ describe("mergeConfig", () => {
   const cliDefaults = {
     port: 3000,
     ollamaUrl: "http://localhost:11434",
-    defaultModel: "llama3.1",
+    defaultModel: "qwen3.5:9b",
     modelMap: {},
     strictThinking: false,
     verbose: false,
@@ -447,11 +447,11 @@ describe("mergeConfig", () => {
   it("file values are applied when present and no env var overrides", () => {
     const file = {
       version: "1" as const,
-      defaultModel: "qwen3.5:9b",
+      defaultModel: "deepseek-r1:8b",
       port: 4000,
     };
     const result = mergeConfig(file, cliDefaults);
-    expect(result.defaultModel).toBe("qwen3.5:9b");
+    expect(result.defaultModel).toBe("deepseek-r1:8b");
     // File port wins when PORT env var is not set (which is the case in tests)
     expect(result.port).toBe(4000);
   });

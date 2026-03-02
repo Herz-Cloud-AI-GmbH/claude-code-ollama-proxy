@@ -40,9 +40,9 @@ import {
  * Custom tier routing example (proxy.config.json):
  *   "modelMap": {
  *     "claude-opus-4-5":          "qwen3:32b",
- *     "claude-sonnet-4-5":        "qwen3:8b",
+ *     "claude-sonnet-4-5":        "qwen3.5:9b",
  *     "claude-haiku-4-5":         "qwen3:1.7b",
- *     "claude-3-5-sonnet-20241022": "qwen3:8b"
+ *     "claude-3-5-sonnet-20241022": "qwen3.5:9b"
  *   }
  */
 export const DEFAULT_MODEL_MAP: ModelMap = {};

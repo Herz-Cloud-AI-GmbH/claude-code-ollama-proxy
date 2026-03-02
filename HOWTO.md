@@ -56,9 +56,9 @@ make run DEFAULT_MODEL=deepseek-r1:8b PORT=3456
 ### Direct CLI (after `make build`)
 
 ```bash
-node dist/cli.js --default-model qwen3:8b                                      # foreground
-node dist/cli.js --default-model qwen3:8b --background --log-file proxy.log    # daemon
-node dist/cli.js --default-model qwen3:8b --log-level debug                    # debug logging
+node dist/cli.js --default-model qwen3.5:9b                                      # foreground
+node dist/cli.js --default-model qwen3.5:9b --background --log-file proxy.log    # daemon
+node dist/cli.js --default-model qwen3.5:9b --log-level debug                    # debug logging
 node dist/cli.js --stop                                                         # stop daemon
 node dist/cli.js --init                                                         # generate config file
 node dist/cli.js --port 3456 --ollama-url http://192.168.1.100:11434           # custom port/URL
@@ -79,7 +79,7 @@ tail -f proxy.log | jq 'select(.Attributes["http.target"] != null)'     # HTTP r
 
 ### Devcontainer (recommended)
 
-**Prerequisites:** VS Code + [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers), Ollama running on the host, a model pulled (`ollama pull qwen3:8b`).
+**Prerequisites:** VS Code + [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers), Ollama running on the host, a model pulled (`ollama pull qwen3.5:9b`).
 
 1. Open the repo in VS Code, choose _"Reopen in Container"_.
 2. In the devcontainer terminal:
@@ -91,10 +91,10 @@ tail -f proxy.log | jq 'select(.Attributes["http.target"] != null)'     # HTTP r
 ### Host (no devcontainer)
 
 1. `npm install && npm run build`
-2. `node dist/cli.js --default-model qwen3:8b`
+2. `node dist/cli.js --default-model qwen3.5:9b`
 3. In a second terminal:
    ```bash
-   ANTHROPIC_BASE_URL=http://localhost:3000 ANTHROPIC_MODEL=qwen3:8b ANTHROPIC_API_KEY=proxy-key claude
+   ANTHROPIC_BASE_URL=http://localhost:3000 ANTHROPIC_MODEL=qwen3.5:9b ANTHROPIC_API_KEY=proxy-key claude
    ```
 
 ---
@@ -115,7 +115,7 @@ node dist/cli.js --init    # generates proxy.config.json
   "version": "1",
   "port": 3000,
   "ollamaUrl": "http://host.docker.internal:11434",
-  "defaultModel": "qwen3:8b",
+  "defaultModel": "qwen3.5:9b",
   "modelMap": {},
   "strictThinking": false,
   "logLevel": "info",
@@ -137,7 +137,7 @@ proxy.config.json  <  environment variables  <  CLI flags
 |---|---|---|---|---|
 | `port` | `--port, -p` | `PORT` | `3000` | Listen port |
 | `ollamaUrl` | `--ollama-url, -u` | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
-| `defaultModel` | `--default-model, -d` | `DEFAULT_MODEL` | `llama3.1` | Fallback Ollama model |
+| `defaultModel` | `--default-model, -d` | `DEFAULT_MODEL` | `qwen3.5:9b` | Fallback Ollama model |
 | `modelMap` | `--model-map, -m` | -- | `{}` | Claude tier name -> Ollama model overrides |
 | `strictThinking` | `--strict-thinking` | -- | `false` | HTTP 400 for thinking on non-capable models |
 | `logLevel` | `--log-level` | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug` |
@@ -181,7 +181,7 @@ Use `modelMap` only if you need different Ollama models per Claude tier:
 ```json
 "modelMap": {
   "claude-opus-4-5":   "qwen3:32b",
-  "claude-sonnet-4-5": "qwen3:8b",
+  "claude-sonnet-4-5": "qwen3.5:9b",
   "claude-haiku-4-5":  "qwen3:1.7b"
 }
 ```
@@ -211,8 +211,8 @@ These environment variables tell Claude Code to use the proxy instead of Anthrop
 | Variable | Value | Description |
 |---|---|---|
 | `ANTHROPIC_BASE_URL` | `http://localhost:3000` | Points Claude Code at the proxy |
-| `ANTHROPIC_MODEL` | `qwen3:8b` (or any Ollama model) | Model for large tasks |
-| `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3:8b` (or any Ollama model) | Model for background/small tasks |
+| `ANTHROPIC_MODEL` | `qwen3.5:9b` (or any Ollama model) | Model for large tasks |
+| `ANTHROPIC_SMALL_FAST_MODEL` | `qwen3.5:9b` (or any Ollama model) | Model for background/small tasks |
 | `ANTHROPIC_API_KEY` | `proxy-key` (any non-empty string) | Satisfies Claude Code's key check -- proxy ignores it |
 
 **Tip:** Setting `ANTHROPIC_MODEL` to an Ollama model name directly is the recommended approach. The proxy passes any non-Claude model name straight through to Ollama without consulting `modelMap`.

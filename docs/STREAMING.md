@@ -13,9 +13,9 @@ Ollama streams responses as **newline-delimited JSON** over a regular HTTP
 response body. Each line is a self-contained JSON object:
 
 ```
-{"model":"llama3.1","created_at":"...","message":{"role":"assistant","content":"Hello"},"done":false}
-{"model":"llama3.1","created_at":"...","message":{"role":"assistant","content":" world"},"done":false}
-{"model":"llama3.1","created_at":"...","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","eval_count":12,"prompt_eval_count":20}
+{"model":"qwen3.5:9b","created_at":"...","message":{"role":"assistant","content":"Hello"},"done":false}
+{"model":"qwen3.5:9b","created_at":"...","message":{"role":"assistant","content":" world"},"done":false}
+{"model":"qwen3.5:9b","created_at":"...","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","eval_count":12,"prompt_eval_count":20}
 ```
 
 Key points:

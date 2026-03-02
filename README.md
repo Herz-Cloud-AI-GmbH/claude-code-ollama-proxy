@@ -21,7 +21,7 @@ Claude Code ──(Anthropic API)──► claude-code-ollama-proxy ──(Ollam
 
 ## Getting Started
 
-**Prerequisites:** [Ollama](https://ollama.com) running on the host with a model pulled (e.g. `ollama pull qwen3:8b`).
+**Prerequisites:** [Ollama](https://ollama.com) running on the host with a model pulled (e.g. `ollama pull qwen3.5:9b`).
 
 **Devcontainer (recommended):**
 
@@ -34,13 +34,13 @@ make run    # builds, starts proxy in background, launches Claude Code
 Terminal 1 — start the proxy:
 ```bash
 npm install && npm run build
-node dist/cli.js --default-model qwen3:8b
+node dist/cli.js --default-model qwen3.5:9b
 ```
 
 Terminal 2 — launch Claude Code:
 ```bash
 ANTHROPIC_BASE_URL=http://localhost:3000 \
-ANTHROPIC_MODEL=qwen3:8b \
+ANTHROPIC_MODEL=qwen3.5:9b \
 ANTHROPIC_API_KEY=proxy-key \
 claude
 ```

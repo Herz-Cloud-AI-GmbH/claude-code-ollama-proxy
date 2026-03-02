@@ -33,14 +33,14 @@ describe("mapModel", () => {
     const result = mapModel(
       "claude-3-5-sonnet-20241022",
       DEFAULT_MODEL_MAP,
-      "llama3.1",
+      "qwen3.5:9b",
     );
-    expect(result).toBe("llama3.1");
+    expect(result).toBe("qwen3.5:9b");
   });
 
   it("passes through non-Claude model names directly (AI-agent-first pass-through)", () => {
-    // Users can set ANTHROPIC_MODEL=qwen3:8b in Claude Code; the proxy passes it through.
-    expect(mapModel("qwen3:8b", {}, "llama3.1")).toBe("qwen3:8b");
+    // Users can set ANTHROPIC_MODEL=qwen3.5:9b in Claude Code; the proxy passes it through.
+    expect(mapModel("qwen3.5:9b", {}, "llama3.1")).toBe("qwen3.5:9b");
     expect(mapModel("mistral:latest", {}, "llama3.1")).toBe("mistral:latest");
   });
 
@@ -93,7 +93,7 @@ describe("extractMessageText", () => {
 
 describe("anthropicToOllama", () => {
   const modelMap = DEFAULT_MODEL_MAP;
-  const defaultModel = "llama3.1";
+  const defaultModel = "qwen3.5:9b";
 
   it("prepends system message when system field is present", () => {
     const req: AnthropicRequest = {
@@ -493,7 +493,7 @@ describe("sequentializeToolCalls", () => {
 
 describe("anthropicToOllama with sequentialToolCalls option", () => {
   const modelMap = DEFAULT_MODEL_MAP;
-  const defaultModel = "llama3.1";
+  const defaultModel = "qwen3.5:9b";
 
   it("sequentializes parallel tool calls by default", () => {
     const req: AnthropicRequest = {

@@ -416,9 +416,9 @@ describe("writeDefaultConfigFile / loadConfigFile", () => {
   });
 
   it("writes partial config with overrides", () => {
-    writeDefaultConfigFile(tmpPath, { defaultModel: "qwen3:8b", strictThinking: true });
+    writeDefaultConfigFile(tmpPath, { defaultModel: "qwen3.5:9b", strictThinking: true });
     const loaded = loadConfigFile(tmpPath);
-    expect(loaded!.defaultModel).toBe("qwen3:8b");
+    expect(loaded!.defaultModel).toBe("qwen3.5:9b");
     expect(loaded!.strictThinking).toBe(true);
     rmSync(tmpPath);
   });
@@ -432,7 +432,7 @@ describe("mergeConfig", () => {
   const cliDefaults = {
     port: 3000,
     ollamaUrl: "http://localhost:11434",
-    defaultModel: "llama3.1",
+    defaultModel: "qwen3.5:9b",
     modelMap: {},
     strictThinking: false,
     verbose: false,
@@ -447,11 +447,11 @@ describe("mergeConfig", () => {
   it("file values are applied when present and no env var overrides", () => {
     const file = {
       version: "1" as const,
-      defaultModel: "qwen3:8b",
+      defaultModel: "deepseek-r1:8b",
       port: 4000,
     };
     const result = mergeConfig(file, cliDefaults);
-    expect(result.defaultModel).toBe("qwen3:8b");
+    expect(result.defaultModel).toBe("deepseek-r1:8b");
     // File port wins when PORT env var is not set (which is the case in tests)
     expect(result.port).toBe(4000);
   });
@@ -459,11 +459,11 @@ describe("mergeConfig", () => {
   it("file modelMap is merged with CLI overrides", () => {
     const file = {
       version: "1" as const,
-      modelMap: { "claude-sonnet-4-5": "qwen3:8b" },
+      modelMap: { "claude-sonnet-4-5": "qwen3.5:9b" },
     };
     const cliWithMap = { ...cliDefaults, modelMap: { "claude-haiku-4-5": "qwen3:1.7b" } };
     const result = mergeConfig(file, cliWithMap);
-    expect(result.modelMap["claude-sonnet-4-5"]).toBe("qwen3:8b");
+    expect(result.modelMap["claude-sonnet-4-5"]).toBe("qwen3.5:9b");
     expect(result.modelMap["claude-haiku-4-5"]).toBe("qwen3:1.7b");
   });
 

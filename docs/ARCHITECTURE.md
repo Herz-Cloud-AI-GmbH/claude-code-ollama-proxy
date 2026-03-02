@@ -201,7 +201,7 @@ All API types for both Anthropic and Ollama, plus `ProxyConfig` and error types.
 
 3. translator.ts: anthropicToOllama()
    → sequentializeToolCalls(): parallel tool-call rounds expanded to sequential pairs
-   { model: "llama3.1:8b", messages: [...], tools: [...], stream: false }
+   { model: "qwen3.5:9b", messages: [...], tools: [...], stream: false }
 
 4. ollama-client.ts: ollamaChat() → Ollama /api/chat
 
@@ -246,7 +246,7 @@ type ProxyConfig = {
   port: number;              // HTTP port (default: 3000)
   ollamaUrl: string;         // Ollama base URL (default: http://localhost:11434)
   modelMap: ModelMap;        // Claude → Ollama model name map
-  defaultModel: string;      // Fallback model (default: llama3.1)
+  defaultModel: string;      // Fallback model (default: qwen3.5:9b)
   strictThinking: boolean;   // When true, return 400 for thinking on non-thinking models
   sequentialToolCalls: boolean; // Rewrite parallel tool calls to sequential (default: true)
   verbose: boolean;          // Shorthand for logLevel: "debug"

@@ -3,7 +3,7 @@
 # Ollama runs on the host machine; host.docker.internal resolves to the host
 # gateway from inside the devcontainer (set via --add-host in devcontainer.json).
 OLLAMA_URL      ?= http://host.docker.internal:11434
-DEFAULT_MODEL   ?= qwen3:8b
+DEFAULT_MODEL   ?= qwen3.5:9b
 PORT            ?= 3000
 LOG_FILE        ?= proxy.log
 

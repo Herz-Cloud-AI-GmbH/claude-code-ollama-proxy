@@ -32,7 +32,7 @@ function loadVersion(): string {
 }
 
 function parseModelMap(value: string, previous: ModelMap): ModelMap {
-  // Accept JSON string: '{"claude-3-5-sonnet-20241022":"llama3.1:8b"}'
+  // Accept JSON string: '{"claude-3-5-sonnet-20241022":"qwen3.5:9b"}'
   if (value.startsWith("{")) {
     try {
       return { ...previous, ...(JSON.parse(value) as ModelMap) };
@@ -40,7 +40,7 @@ function parseModelMap(value: string, previous: ModelMap): ModelMap {
       throw new Error(`Invalid JSON for --model-map: ${value}`);
     }
   }
-  // Accept key=value pair: claude-3-5-sonnet-20241022=llama3.1:8b
+  // Accept key=value pair: claude-3-5-sonnet-20241022=qwen3.5:9b
   const eqIdx = value.indexOf("=");
   if (eqIdx === -1) {
     throw new Error(`Invalid --model-map entry (expected key=value): ${value}`);
@@ -86,14 +86,14 @@ program
   )
   .option(
     "-m, --model-map <mapping>",
-    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-sonnet-4-5=qwen3:8b',
+    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-sonnet-4-5=qwen3.5:9b',
     (v, prev) => parseModelMap(v, prev),
     { ...DEFAULT_MODEL_MAP },
   )
   .option(
     "-d, --default-model <model>",
     "Default Ollama model for unmapped Claude models",
-    process.env.DEFAULT_MODEL ?? "llama3.1",
+    process.env.DEFAULT_MODEL ?? "qwen3.5:9b",
   )
   .option(
     "--strict-thinking",

@@ -156,7 +156,7 @@ model list. Useful for tooling that queries available models.
   "object": "list",
   "data": [
     {
-      "id": "llama3.1:8b",
+      "id": "qwen3.5:9b",
       "object": "model",
       "created": 1704067200,
       "owned_by": "ollama"

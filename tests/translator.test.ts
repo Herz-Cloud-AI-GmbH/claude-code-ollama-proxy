@@ -39,8 +39,8 @@ describe("mapModel", () => {
   });
 
   it("passes through non-Claude model names directly (AI-agent-first pass-through)", () => {
-    // Users can set ANTHROPIC_MODEL=qwen3:8b in Claude Code; the proxy passes it through.
-    expect(mapModel("qwen3:8b", {}, "llama3.1")).toBe("qwen3:8b");
+    // Users can set ANTHROPIC_MODEL=qwen3.5:9b in Claude Code; the proxy passes it through.
+    expect(mapModel("qwen3.5:9b", {}, "llama3.1")).toBe("qwen3.5:9b");
     expect(mapModel("mistral:latest", {}, "llama3.1")).toBe("mistral:latest");
   });
 

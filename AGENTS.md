@@ -44,7 +44,7 @@ make help             # list all targets with current variable values
 Direct invocation after build:
 
 ```bash
-node dist/cli.js --port 3000 --ollama-url http://host.docker.internal:11434 --default-model qwen3:8b
+node dist/cli.js --port 3000 --ollama-url http://host.docker.internal:11434 --default-model qwen3.5:9b
 node dist/cli.js --background --log-file proxy.log   # start as daemon
 node dist/cli.js --stop                               # stop the daemon
 node dist/cli.js --init                               # write proxy.config.json and exit

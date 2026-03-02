@@ -77,7 +77,7 @@ Map a Claude model name to an Ollama model name. Two formats are supported:
 
 ```bash
 claude-code-ollama-proxy \
-  -m claude-sonnet-4-5=qwen3:8b \
+  -m claude-sonnet-4-5=qwen3.5:9b \
   -m claude-haiku-4-5=qwen3:1.7b
 ```
 
@@ -85,7 +85,7 @@ claude-code-ollama-proxy \
 
 ```bash
 claude-code-ollama-proxy \
-  --model-map '{"claude-sonnet-4-5":"qwen3:8b"}'
+  --model-map '{"claude-sonnet-4-5":"qwen3.5:9b"}'
 ```
 
 > **Note:** The model map is for advanced tier-based routing. The simpler
@@ -96,15 +96,15 @@ claude-code-ollama-proxy \
 
 ### `-d, --default-model <model>`
 
-**Default:** `llama3.1`  
+**Default:** `qwen3.5:9b`  
 **Environment:** `DEFAULT_MODEL`
 
 The Ollama model to use when the requested model is not found in the model map.
 This is the **most important setting** for a simple setup.
 
 ```bash
-claude-code-ollama-proxy --default-model qwen3:8b
-DEFAULT_MODEL=qwen3:8b claude-code-ollama-proxy
+claude-code-ollama-proxy --default-model qwen3.5:9b
+DEFAULT_MODEL=qwen3.5:9b claude-code-ollama-proxy
 ```
 
 ---
@@ -141,7 +141,7 @@ Can also be set in the config file:
 
 By default the proxy rewrites parallel tool-call patterns in the conversation
 history into sequential assistant/user pairs before forwarding to Ollama.
-This prevents smaller models (e.g. qwen3:8b) from hallucinating "sibling tool
+This prevents smaller models (e.g. qwen3.5:9b) from hallucinating "sibling tool
 call errored" instead of processing tool results.
 
 Pass `--no-sequential-tools` to disable the rewrite if your model handles
@@ -286,10 +286,10 @@ Running `--init` creates a `proxy.config.json` with all settings documented:
   "version": "1",
   "port": 3000,
   "ollamaUrl": "http://localhost:11434",
-  "defaultModel": "qwen3:8b",
+  "defaultModel": "qwen3.5:9b",
   "modelMap": {
     "claude-opus-4-5":  "qwen3:32b",
-    "claude-sonnet-4-5": "qwen3:8b",
+    "claude-sonnet-4-5": "qwen3.5:9b",
     "claude-haiku-4-5":  "qwen3:1.7b"
   },
   "strictThinking": false,
@@ -334,11 +334,11 @@ proxy.config.json  <  environment variables  <  CLI flags
 
 ```bash
 # Step 1: start the proxy with your Ollama model as default
-claude-code-ollama-proxy --default-model qwen3:8b
+claude-code-ollama-proxy --default-model qwen3.5:9b
 
 # Step 2: launch Claude Code — set ANTHROPIC_MODEL to your Ollama model
 ANTHROPIC_API_KEY=any-value \
-ANTHROPIC_MODEL=qwen3:8b \
+ANTHROPIC_MODEL=qwen3.5:9b \
 ANTHROPIC_BASE_URL=http://localhost:3000 \
 claude
 ```
@@ -351,12 +351,12 @@ For thinking models:
 
 ```bash
 # Pull a thinking-capable model first
-ollama pull qwen3:8b
+ollama pull qwen3.5:9b
 
-claude-code-ollama-proxy --default-model qwen3:8b
+claude-code-ollama-proxy --default-model qwen3.5:9b
 
 ANTHROPIC_API_KEY=any-value \
-ANTHROPIC_MODEL=qwen3:8b \
+ANTHROPIC_MODEL=qwen3.5:9b \
 ANTHROPIC_BASE_URL=http://localhost:3000 \
 claude
 ```

@@ -86,14 +86,14 @@ program
   )
   .option(
     "-m, --model-map <mapping>",
-    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-sonnet-4-5=qwen3:8b',
+    'Model mapping as key=value or JSON. Can be repeated. E.g. -m claude-sonnet-4-5=qwen3.5:9b',
     (v, prev) => parseModelMap(v, prev),
     { ...DEFAULT_MODEL_MAP },
   )
   .option(
     "-d, --default-model <model>",
     "Default Ollama model for unmapped Claude models",
-    process.env.DEFAULT_MODEL ?? "llama3.1",
+    process.env.DEFAULT_MODEL ?? "qwen3.5:9b",
   )
   .option(
     "--strict-thinking",

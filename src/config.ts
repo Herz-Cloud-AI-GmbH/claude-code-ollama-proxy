@@ -29,7 +29,7 @@ export type ProxyConfigFile = {
    *
    * Example for tier-based routing:
    *   "claude-opus-4-5":   "qwen3:32b"
-   *   "claude-sonnet-4-5": "qwen3:8b"
+   *   "claude-sonnet-4-5": "qwen3.5:9b"
    *   "claude-haiku-4-5":  "qwen3:1.7b"
    */
   modelMap?: ModelMap;
@@ -86,7 +86,7 @@ export function writeDefaultConfigFile(
     version: "1",
     port: 3000,
     ollamaUrl: "http://localhost:11434",
-    defaultModel: "llama3.1",
+    defaultModel: "qwen3.5:9b",
     modelMap: {},
     strictThinking: false,
     verbose: false,

@@ -135,7 +135,7 @@ Thinking field silently stripped:
   "Body": "Thinking field stripped for non-thinking model",
   "Attributes": {
     "proxy.request_id":    "req_a1b2c3d4",
-    "proxy.ollama_model":  "llama3.1",
+    "proxy.ollama_model":  "qwen3.5:9b",
     "proxy.requested_model": "claude-sonnet-4-5"
   }
 }

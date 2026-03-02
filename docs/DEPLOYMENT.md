@@ -79,7 +79,7 @@ services:
     environment:
       OLLAMA_URL: http://ollama:11434
       PORT: "3000"
-      DEFAULT_MODEL: llama3.1
+      DEFAULT_MODEL: qwen3.5:9b
     command: >
       sh -c "npm install -g claude-code-ollama-proxy && claude-code-ollama-proxy"
     depends_on:
@@ -94,7 +94,7 @@ volumes:
 docker compose up -d
 
 # Pull a model in Ollama
-docker exec ollama ollama pull llama3.1
+docker exec ollama ollama pull qwen3.5:9b
 
 # Use Claude Code
 ANTHROPIC_API_KEY=any-value \
@@ -121,7 +121,7 @@ ExecStart=/usr/local/bin/claude-code-ollama-proxy --port 3000
 Restart=on-failure
 RestartSec=5s
 Environment=OLLAMA_URL=http://localhost:11434
-Environment=DEFAULT_MODEL=llama3.1
+Environment=DEFAULT_MODEL=qwen3.5:9b
 
 [Install]
 WantedBy=multi-user.target
@@ -176,7 +176,7 @@ server {
 |---|---|---|
 | `PORT` | `3000` | TCP port |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama base URL |
-| `DEFAULT_MODEL` | `llama3.1` | Fallback Ollama model |
+| `DEFAULT_MODEL` | `qwen3.5:9b` | Fallback Ollama model |
 
 ---
 

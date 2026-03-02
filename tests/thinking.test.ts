@@ -19,7 +19,7 @@ describe("THINKING_CAPABLE_PREFIXES", () => {
 
 describe("isThinkingCapable", () => {
   it("returns true for qwen3 with tag", () => {
-    expect(isThinkingCapable("qwen3:8b")).toBe(true);
+    expect(isThinkingCapable("qwen3.5:9b")).toBe(true);
   });
 
   it("returns true for bare qwen3", () => {

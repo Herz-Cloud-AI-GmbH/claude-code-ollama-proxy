@@ -25,4 +25,4 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} \
     #
     # update npm to be able to run MCP servers with npx
     # !!!--ignore-scripts due to Shai Hulud attack!!!
-    && npm install --ignore-scripts -g npm@11.10.1
+    && npm install --ignore-scripts -g npm@latest
